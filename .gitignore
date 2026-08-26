@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# Java
+backend/target/
+*.class
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+
+# Tooling
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

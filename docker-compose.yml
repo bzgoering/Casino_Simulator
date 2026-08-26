@@ -1,0 +1,72 @@
+# Casino stack for Docker Desktop.
+#
+#   docker compose up --build
+#   open http://localhost:8081
+#
+# Secrets come from a .env file next to this one; copy .env.example and edit it. Nothing here
+# has a usable default password, and the backend refuses to start without a JWT secret.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: casino-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-casino}
+      POSTGRES_USER: ${POSTGRES_USER:-casino}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - casino-db-data:/var/lib/postgresql/data
+    # Not published to the host: only the backend needs to reach the database. Uncomment to
+    # inspect it with a local client.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-casino} -d ${POSTGRES_DB:-casino}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [casino-net]
+
+  backend:
+    build:
+      context: ./backend
+    container_name: casino-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-casino}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-casino}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      CASINO_JWT_SECRET: ${CASINO_JWT_SECRET:?set CASINO_JWT_SECRET in .env (32+ bytes)}
+      # nginx serves the browser, so that is the only origin the API needs to accept.
+      CASINO_SECURITY_ALLOWED_ORIGINS: http://localhost:8081
+    expose:
+      - "8080"
+    # Published so you can curl the API directly during development. Remove for a deployment
+    # where only nginx should be reachable.
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks: [casino-net]
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: casino-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    restart: unless-stopped
+    networks: [casino-net]
+
+volumes:
+  casino-db-data:
+
+networks:
+  casino-net:
+    driver: bridge
