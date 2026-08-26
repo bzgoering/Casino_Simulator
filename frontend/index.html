@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Casino</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="topbar" id="topbar" hidden>
+      <button class="brand" id="nav-lobby" type="button">&#127920; Casino</button>
+      <nav class="topnav" aria-label="Games">
+        <button type="button" data-view="floor">Floor</button>
+        <button type="button" data-view="blackjack">Blackjack</button>
+        <button type="button" data-view="slots">Slots</button>
+        <button type="button" data-view="roulette">Roulette</button>
+        <button type="button" data-view="history" id="nav-history">History</button>
+        <button type="button" data-view="admin" id="nav-admin" hidden>Admin</button>
+      </nav>
+      <div class="account">
+        <span class="account-name" id="account-name"></span>
+        <span class="chip" id="account-role"></span>
+        <span class="balance" id="account-balance" aria-live="polite">$0.00</span>
+        <button type="button" id="sign-out" class="link">Sign out</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="view lobby" id="view-lobby">
+        <div class="lobby-card">
+          <h1>&#127920; Casino</h1>
+          <p class="tagline">Blackjack, slots and roulette. Play money only.</p>
+
+          <div class="tabs" role="tablist">
+            <button role="tab" type="button" class="active" data-tab="guest">Guest</button>
+            <button role="tab" type="button" data-tab="login">Sign in</button>
+            <button role="tab" type="button" data-tab="signup">Sign up</button>
+          </div>
+
+          <div class="tabpanel" id="tab-guest">
+            <p>Play instantly with <strong>$10,000</strong> in chips. Nothing is saved &mdash; your
+              balance disappears when the session ends.</p>
+            <button type="button" class="primary" id="play-as-guest">Play as guest</button>
+          </div>
+
+          <form class="tabpanel" id="tab-login" hidden autocomplete="on">
+            <label for="login-username">Username</label>
+            <input id="login-username" name="username" autocomplete="username" required
+                   maxlength="32" />
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password"
+                   autocomplete="current-password" required maxlength="72" />
+            <button type="submit" class="primary">Sign in</button>
+          </form>
+
+          <form class="tabpanel" id="tab-signup" hidden autocomplete="on">
+            <label for="signup-username">Username</label>
+            <input id="signup-username" name="username" autocomplete="username" required
+                   minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+" />
+            <p class="hint">3&ndash;32 characters: letters, numbers or underscore.</p>
+            <label for="signup-password">Password</label>
+            <input id="signup-password" name="password" type="password"
+                   autocomplete="new-password" required minlength="10" maxlength="72" />
+            <p class="hint">At least 10 characters. New players start with $100.</p>
+            <button type="submit" class="primary">Create account</button>
+          </form>
+
+          <p class="form-error" id="lobby-error" role="alert" aria-live="assertive"></p>
+        </div>
+      </section>
+
+      <section class="view" id="view-floor" hidden>
+        <h1>Casino floor</h1>
+        <p class="subtitle" id="floor-greeting"></p>
+        <div class="game-grid">
+          <button type="button" class="game-card" data-view="blackjack">
+            <span class="game-icon">&#127183;</span>
+            <span class="game-name">Blackjack</span>
+            <span class="game-detail" id="floor-blackjack-detail">8 decks</span>
+          </button>
+          <button type="button" class="game-card" data-view="slots">
+            <span class="game-icon">&#127920;</span>
+            <span class="game-name">Slots</span>
+            <span class="game-detail" id="floor-slots-detail">3 reels</span>
+          </button>
+          <button type="button" class="game-card" data-view="roulette">
+            <span class="game-icon">&#127919;</span>
+            <span class="game-name">Roulette</span>
+            <span class="game-detail" id="floor-roulette-detail">Single zero</span>
+          </button>
+        </div>
+        <div class="odds-panel" id="odds-panel"></div>
+      </section>
+
+      <section class="view" id="view-blackjack" hidden>
+        <h1>Blackjack</h1>
+        <p class="subtitle" id="blackjack-rules"></p>
+
+        <div class="table felt">
+          <div class="seat dealer">
+            <h2>Dealer <span class="total" id="dealer-total"></span></h2>
+            <div class="cards" id="dealer-cards" aria-live="polite"></div>
+          </div>
+          <div class="seat player">
+            <h2>You</h2>
+            <div class="hands" id="player-hands" aria-live="polite"></div>
+          </div>
+          <p class="outcome" id="blackjack-outcome" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="controls">
+          <div class="bet-row" id="blackjack-bet-row">
+            <label for="blackjack-bet">Bet</label>
+            <input id="blackjack-bet" type="number" min="1" step="1" value="25" />
+            <button type="button" class="primary" id="blackjack-deal">Deal</button>
+          </div>
+          <div class="action-row" id="blackjack-actions" hidden>
+            <button type="button" data-action="HIT">Hit</button>
+            <button type="button" data-action="STAND">Stand</button>
+            <button type="button" data-action="DOUBLE">Double</button>
+            <button type="button" data-action="SPLIT">Split</button>
+          </div>
+          <p class="shoe-info" id="shoe-info"></p>
+        </div>
+      </section>
+
+      <section class="view" id="view-slots" hidden>
+        <h1>Slots</h1>
+        <p class="subtitle" id="slots-rtp"></p>
+
+        <div class="slot-machine">
+          <div class="reels" id="slot-reels" aria-live="polite">
+            <div class="reel" data-reel="0"><span>&#127826;</span></div>
+            <div class="reel" data-reel="1"><span>&#127826;</span></div>
+            <div class="reel" data-reel="2"><span>&#127826;</span></div>
+          </div>
+          <p class="outcome" id="slots-outcome" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="controls">
+          <div class="bet-row">
+            <label for="slots-bet">Bet</label>
+            <input id="slots-bet" type="number" min="1" step="1" value="5" />
+            <button type="button" class="primary" id="slots-spin">Spin</button>
+          </div>
+        </div>
+
+        <details class="paytable">
+          <summary>Paytable</summary>
+          <table id="slots-paytable"><tbody></tbody></table>
+        </details>
+      </section>
+
+      <section class="view" id="view-roulette" hidden>
+        <h1>Roulette</h1>
+        <p class="subtitle" id="roulette-info"></p>
+
+        <div class="roulette-layout">
+          <div class="wheel-area">
+            <div class="wheel" id="roulette-wheel" aria-hidden="true"></div>
+            <p class="result-pocket" id="roulette-result" role="status" aria-live="polite"></p>
+            <ul class="recent" id="roulette-recent" aria-label="Recent results"></ul>
+          </div>
+
+          <div class="cloth-area">
+            <div class="chip-row">
+              <span>Chip</span>
+              <button type="button" class="chip-btn active" data-chip="1">$1</button>
+              <button type="button" class="chip-btn" data-chip="5">$5</button>
+              <button type="button" class="chip-btn" data-chip="25">$25</button>
+              <button type="button" class="chip-btn" data-chip="100">$100</button>
+            </div>
+            <div class="cloth" id="roulette-cloth"></div>
+            <div class="placed">
+              <h2>Your bets <span id="roulette-staked"></span></h2>
+              <ul id="roulette-bets"></ul>
+              <div class="bet-actions">
+                <button type="button" id="roulette-clear">Clear</button>
+                <button type="button" class="primary" id="roulette-spin">Spin</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-history" hidden>
+        <h1>Account history</h1>
+        <p class="subtitle" id="history-note"></p>
+        <table class="history-table">
+          <thead>
+            <tr><th>When</th><th>Type</th><th>Game</th><th>Amount</th><th>Balance</th><th>Detail</th></tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </section>
+
+      <section class="view" id="view-admin" hidden>
+        <h1>Administration</h1>
+        <p class="subtitle">Credit a balance. Every action here is recorded in the audit log.</p>
+
+        <form class="admin-form" id="admin-credit-form">
+          <label for="admin-target">Target UID <span class="hint">(blank credits yourself)</span></label>
+          <input id="admin-target" maxlength="64" placeholder="Player UID or guest session id" />
+          <label for="admin-amount">Amount</label>
+          <input id="admin-amount" type="number" min="0.01" step="0.01" value="1000" required />
+          <button type="submit" class="primary">Credit balance</button>
+          <p class="form-error" id="admin-error" role="alert"></p>
+          <p class="form-success" id="admin-success" role="status"></p>
+        </form>
+
+        <h2>Audit log</h2>
+        <table class="history-table">
+          <thead>
+            <tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Kind</th><th>Amount</th><th>From</th></tr>
+          </thead>
+          <tbody id="audit-body"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

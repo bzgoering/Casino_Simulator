@@ -1,0 +1,47 @@
+# Test profile: in-memory H2 in PostgreSQL compatibility mode.
+#
+# Flyway is disabled and Hibernate builds the schema from the entities instead, so a test run
+# needs no database container. The Flyway migration is still the source of truth for real
+# deployments; SchemaMigrationTest checks the two do not drift apart.
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:casino;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.casino: WARN
+
+casino:
+  jwt:
+    # Test-only key. Real deployments read CASINO_JWT_SECRET from the environment.
+    secret: "test-only-signing-key-please-do-not-reuse-anywhere"
+    ttl: PT1H
+    issuer: casino-backend
+  guest:
+    session-ttl: PT2H
+    max-sessions: 1000
+  limits:
+    min-bet: "1.00"
+    max-bet: "5000.00"
+    max-roulette-bets: 20
+    max-admin-credit: "1000000.00"
+  security:
+    max-failed-logins: 5
+    lock-duration: PT15M
+    # Raised so a test that exercises many auth calls is not throttled by the limiter.
+    auth-rate-per-minute: 10000
+    allowed-origins:
+      - http://localhost:5173

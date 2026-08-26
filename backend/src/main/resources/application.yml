@@ -1,0 +1,98 @@
+# Casino backend configuration.
+#
+# Every secret is read from the environment and has no working default. The application refuses
+# to start without CASINO_JWT_SECRET unless the "dev" profile is active, where it generates an
+# ephemeral key instead so nothing predictable is ever committed.
+
+spring:
+  application:
+    name: casino-backend
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/casino}
+    username: ${SPRING_DATASOURCE_USERNAME:casino}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Hibernate must never alter it, or a mapping typo becomes a
+      # silent production migration.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    # Never surface stack traces or internal messages through the container's error page.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. Metrics, env and beans all leak useful reconnaissance.
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.casino: INFO
+    org.springframework.security: WARN
+
+casino:
+  jwt:
+    secret: ${CASINO_JWT_SECRET:}
+    ttl: PT12H
+    issuer: casino-backend
+  guest:
+    session-ttl: PT2H
+    max-sessions: 20000
+  limits:
+    min-bet: "1.00"
+    max-bet: "5000.00"
+    max-roulette-bets: 20
+    max-admin-credit: "1000000.00"
+  security:
+    max-failed-logins: 5
+    lock-duration: PT15M
+    auth-rate-per-minute: 20
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:8081
+
+---
+# Local development: relaxed origins and verbose game logging.
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    com.casino: DEBUG
+
+casino:
+  security:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:4173
+      - http://localhost:8081
+      - http://127.0.0.1:5173
