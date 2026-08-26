@@ -1,4 +1,4 @@
-# Casino
+# Casino Simulator
 
 A full-stack casino simulation: **Java 21 / Spring Boot** backend, **vanilla JavaScript** frontend,
 **PostgreSQL** for accounts, all containerised for **Docker Desktop**.
@@ -131,7 +131,7 @@ numbers and collect 17:1 on it.
 ## Architecture
 
 ```
-Casino/
+Casino_Simulator/
 ├── backend/                     Spring Boot, layered
 │   └── src/main/java/com/casino/
 │       ├── game/                pure engines - no Spring, no database
