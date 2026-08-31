@@ -1,6 +1,7 @@
 package com.casino.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -170,5 +171,98 @@ class AdminApiTest extends ApiTestSupport {
         }
 
         assertThat(ledgerTotal).isEqualByComparingTo(me.get("balance").decimalValue());
+    }
+
+    @Test
+    @DisplayName("an admin can change the table limits, and the new ones bind immediately")
+    void adminCanChangeTableLimits() throws Exception {
+        JsonNode admin = adminSession("admin_limits", "correct-horse-9");
+        JsonNode player = signUp("limits_player", "correct-horse-9");
+
+        try {
+            JsonNode limits = perform(postJson("/api/admin/limits", """
+                    {"minBet": 5.00, "maxBet": 50.00}
+                    """, token(admin)));
+
+            assertThat(limits.get("minBet").decimalValue()).isEqualByComparingTo("5.00");
+            assertThat(limits.get("maxBet").decimalValue()).isEqualByComparingTo("50.00");
+
+            // The public config reports what is actually enforced.
+            JsonNode config = perform(get("/api/config"));
+            assertThat(config.get("minBet").decimalValue()).isEqualByComparingTo("5.00");
+
+            mvc.perform(postJson("/api/games/slots/spin", """
+                            {"bet": 2.00}
+                            """, token(player)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("Below 5.00 minimum."));
+
+            mvc.perform(postJson("/api/games/slots/spin", """
+                            {"bet": 80.00}
+                            """, token(player)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("Above 50.00 maximum."));
+        } finally {
+            // The validator holds the limits outside the transaction, so put them back.
+            perform(postJson("/api/admin/limits", """
+                    {"minBet": 1.00, "maxBet": 5000.00}
+                    """, token(admin)));
+        }
+    }
+
+    @Test
+    @DisplayName("a maximum below the minimum is refused")
+    void invertedLimitsRefused() throws Exception {
+        JsonNode admin = adminSession("admin_inverted", "correct-horse-9");
+
+        mvc.perform(postJson("/api/admin/limits", """
+                        {"minBet": 100.00, "maxBet": 10.00}
+                        """, token(admin)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Maximum below minimum."));
+    }
+
+    @Test
+    @DisplayName("the maximum bet cannot be raised past the configured ceiling")
+    void limitsCannotExceedTheCeiling() throws Exception {
+        JsonNode admin = adminSession("admin_ceiling", "correct-horse-9");
+
+        mvc.perform(postJson("/api/admin/limits", """
+                        {"minBet": 1.00, "maxBet": 99999999.00}
+                        """, token(admin)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("a player cannot change the table limits")
+    void playerCannotChangeTableLimits() throws Exception {
+        JsonNode player = signUp("nosy_player", "correct-horse-9");
+
+        mvc.perform(postJson("/api/admin/limits", """
+                        {"minBet": 0.01, "maxBet": 999999.00}
+                        """, token(player)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("history reports lifetime play totals, excluding the sign-up grant")
+    void historyReportsPlayTotals() throws Exception {
+        JsonNode player = signUp("totals_player", "correct-horse-9");
+
+        BigDecimal wagered = BigDecimal.ZERO;
+        BigDecimal returned = BigDecimal.ZERO;
+        for (int i = 0; i < 5; i++) {
+            JsonNode spin = perform(postJson("/api/games/slots/spin", """
+                    {"bet": 2.00}
+                    """, token(player)));
+            wagered = wagered.add(new BigDecimal("2.00"));
+            returned = returned.add(spin.get("payout").decimalValue());
+        }
+
+        JsonNode totals = perform(getAs("/api/me/history", token(player))).get("totals");
+
+        assertThat(totals.get("wagered").decimalValue()).isEqualByComparingTo(wagered);
+        assertThat(totals.get("returned").decimalValue()).isEqualByComparingTo(returned);
+        assertThat(totals.get("net").decimalValue()).isEqualByComparingTo(returned.subtract(wagered));
     }
 }

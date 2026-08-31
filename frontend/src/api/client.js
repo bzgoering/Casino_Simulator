@@ -142,8 +142,8 @@ export class CasinoApi {
 
   // -- games --------------------------------------------------------------
 
-  dealBlackjack(bet) {
-    return this.request('/api/games/blackjack/deal', { method: 'POST', body: { bet } });
+  dealBlackjack(bet, hands = 1) {
+    return this.request('/api/games/blackjack/deal', { method: 'POST', body: { bet, hands } });
   }
 
   blackjackAction(roundId, action) {
@@ -170,6 +170,10 @@ export class CasinoApi {
 
   credit(targetUid, amount) {
     return this.request('/api/admin/credit', { method: 'POST', body: { targetUid, amount } });
+  }
+
+  setLimits(minBet, maxBet) {
+    return this.request('/api/admin/limits', { method: 'POST', body: { minBet, maxBet } });
   }
 
   auditLog(limit = 50) {

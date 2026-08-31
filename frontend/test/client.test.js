@@ -156,7 +156,10 @@ describe('CasinoApi', () => {
 
     await api.dealBlackjack(25);
     expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/games/blackjack/deal');
-    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ bet: 25 });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ bet: 25, hands: 1 });
+
+    await api.dealBlackjack(25, 4);
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ bet: 25, hands: 4 });
 
     await api.spinRoulette([{ type: 'COLOR', selection: 'RED', amount: 5 }]);
     expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/games/roulette/spin');

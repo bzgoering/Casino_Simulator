@@ -1,5 +1,6 @@
 package com.casino.service;
 
+import com.casino.config.CasinoProperties;
 import com.casino.domain.GameType;
 import com.casino.domain.LedgerEntryType;
 import com.casino.game.blackjack.BlackjackRound;
@@ -43,37 +44,66 @@ public class BlackjackService {
     private final RandomSource random;
     private final WalletService wallet;
     private final BetValidator betValidator;
+    private final int maxHands;
     private final BlackjackRules rules = BlackjackRules.standard();
 
-    public BlackjackService(RandomSource random, WalletService wallet, BetValidator betValidator) {
+    public BlackjackService(RandomSource random, WalletService wallet, BetValidator betValidator,
+                            CasinoProperties properties) {
         this.random = random;
         this.wallet = wallet;
         this.betValidator = betValidator;
+        this.maxHands = Math.max(1, properties.limits().maxBlackjackHands());
     }
 
-    /** Starts a new round. Any previous settled round on this seat is replaced. */
+    /** Starts a new round on one box. */
     @Transactional
     public BlackjackRoundView deal(CasinoPrincipal principal, BigDecimal requestedBet) {
+        return deal(principal, requestedBet, 1);
+    }
+
+    /**
+     * Starts a new round across {@code handCount} boxes. Any previous settled round on this seat
+     * is replaced.
+     *
+     * <p>Each box carries the same stake, and the whole thing is taken as one debit before a
+     * card is dealt. Taking it per box would leave a player who can cover three of four boxes
+     * holding a partly funded round.
+     */
+    @Transactional
+    public BlackjackRoundView deal(CasinoPrincipal principal, BigDecimal requestedBet, int handCount) {
+        int boxes = validateHandCount(handCount);
         BigDecimal stake = betValidator.validate(requestedBet);
+        BigDecimal committed = Money.scaled(stake.multiply(BigDecimal.valueOf(boxes)));
         BlackjackTable table = tableFor(principal);
 
         return withTable(table, () -> {
             if (table.round() != null && !table.round().isSettled()) {
-                throw CasinoException.conflict("Finish the hand in progress before dealing a new one.");
+                throw CasinoException.conflict("Hand still in progress.");
             }
             // The cut card is honoured between rounds, never mid-hand.
             table.shoe().shuffleIfNeeded();
 
             String roundId = UUID.randomUUID().toString();
-            wallet.debit(principal, stake, GameType.BLACKJACK, roundId, "Blackjack bet");
+            wallet.debit(principal, committed, GameType.BLACKJACK, roundId,
+                    boxes == 1 ? "Blackjack bet" : "Blackjack bet on " + boxes + " hands");
 
-            BlackjackRound round = new BlackjackRound(rules, table.shoe(), stake);
+            BlackjackRound round = new BlackjackRound(rules, table.shoe(), stake, boxes);
             table.setRound(round);
             table.setRoundId(roundId);
 
             BigDecimal balance = settleIfFinished(principal, round, roundId);
             return view(table, balance);
         });
+    }
+
+    private int validateHandCount(int handCount) {
+        if (handCount < 1) {
+            throw CasinoException.badRequest("Play at least one hand.");
+        }
+        if (handCount > maxHands) {
+            throw CasinoException.badRequest("At most " + maxHands + " hands.");
+        }
+        return handCount;
     }
 
     /** Applies HIT, STAND, DOUBLE or SPLIT to the active hand. */
@@ -84,14 +114,14 @@ public class BlackjackService {
         return withTable(table, () -> {
             BlackjackRound round = table.round();
             if (round == null) {
-                throw CasinoException.notFound("There is no hand in progress. Deal to start one.");
+                throw CasinoException.notFound("No hand in progress.");
             }
             if (round.isSettled()) {
-                throw CasinoException.conflict("That hand is already finished.");
+                throw CasinoException.conflict("Hand already finished.");
             }
             // Binding the action to a round id stops a stale retry from acting on the next hand.
             if (roundId != null && !roundId.equals(table.roundId())) {
-                throw CasinoException.conflict("That hand is no longer in progress.");
+                throw CasinoException.conflict("That hand ended.");
             }
 
             String activeRoundId = table.roundId();
@@ -116,7 +146,7 @@ public class BlackjackService {
     public BlackjackRoundView current(CasinoPrincipal principal) {
         BlackjackTable table = tables.get(principal.subject());
         if (table == null || table.round() == null) {
-            throw CasinoException.notFound("There is no hand in progress.");
+            throw CasinoException.notFound("No hand in progress.");
         }
         table.touch();
         return view(table, wallet.balanceOf(principal));
@@ -171,7 +201,7 @@ public class BlackjackService {
             throw new CasinoException(HttpStatus.SERVICE_UNAVAILABLE, "Request interrupted. Please try again.");
         }
         if (!acquired) {
-            throw CasinoException.conflict("Another action on this hand is still being processed.");
+            throw CasinoException.conflict("Action still processing.");
         }
         try {
             return action.get();
@@ -188,6 +218,11 @@ public class BlackjackService {
 
     public BlackjackRules rules() {
         return rules;
+    }
+
+    /** Most boxes one player may take in a single round. */
+    public int maxHands() {
+        return maxHands;
     }
 
     public int openTableCount() {

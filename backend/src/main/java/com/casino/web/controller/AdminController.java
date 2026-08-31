@@ -60,6 +60,20 @@ public class AdminController {
         return AdminDtos.CreditResponse.from(result);
     }
 
+    /**
+     * Sets the house betting limits, which take effect on the next wager.
+     *
+     * <p>Only the pair is settable: how high the maximum may go is fixed in configuration, so an
+     * admin account cannot open the tables to arbitrarily large stakes.
+     */
+    @PostMapping("/limits")
+    public AdminDtos.LimitsResponse setLimits(@Valid @RequestBody AdminDtos.LimitsRequest request,
+                                              HttpServletRequest http) {
+        var result = adminService.updateLimits(CurrentUser.require(), request.minBet(),
+                request.maxBet(), http.getRemoteAddr());
+        return AdminDtos.LimitsResponse.from(result);
+    }
+
     /** The privileged-action audit trail, most recent first. */
     @GetMapping("/audit")
     public List<AdminDtos.AuditEntryView> auditLog(@RequestParam(defaultValue = "50") int limit) {

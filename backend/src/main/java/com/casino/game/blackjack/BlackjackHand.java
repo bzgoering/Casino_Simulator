@@ -121,8 +121,12 @@ public final class BlackjackHand {
     /**
      * Legal actions right now. Split aces get exactly one card and cannot act again;
      * a doubled hand is likewise finished.
+     *
+     * @param handCount hands currently in play across the whole round
+     * @param maxHands  ceiling on that count, which a further split must not breach
      */
-    public List<PlayerAction> legalActions(BlackjackRules rules, BigDecimal availableBalance, int handCount) {
+    public List<PlayerAction> legalActions(BlackjackRules rules, BigDecimal availableBalance,
+                                           int handCount, int maxHands) {
         List<PlayerAction> actions = new ArrayList<>();
         if (isResolved()) {
             return actions;
@@ -139,7 +143,7 @@ public final class BlackjackHand {
         }
         if (firstDecision && canAffordAnotherBet
                 && splitDepth < rules.maxSplits()
-                && handCount < rules.maxSplits() + 1
+                && handCount < maxHands
                 && cards.get(0).rank().blackjackValue() == cards.get(1).rank().blackjackValue()) {
             actions.add(PlayerAction.SPLIT);
         }

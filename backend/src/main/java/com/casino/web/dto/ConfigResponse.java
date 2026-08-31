@@ -14,17 +14,23 @@ import java.util.Map;
 public record ConfigResponse(
         BigDecimal minBet,
         BigDecimal maxBet,
+        /** The highest maximum bet an administrator may set. */
+        BigDecimal maxConfigurableBet,
         int maxRouletteBets,
         BlackjackInfo blackjack,
         SlotsInfo slots,
         RouletteInfo roulette) {
 
+    /**
+     * @param maxHands most boxes one player may take in a single round
+     */
     public record BlackjackInfo(
             int decks,
             boolean dealerHitsSoft17,
             String blackjackPays,
             int maxSplits,
-            boolean doubleAfterSplit) {
+            boolean doubleAfterSplit,
+            int maxHands) {
     }
 
     /**

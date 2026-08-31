@@ -1,7 +1,7 @@
 import { CasinoApi } from './api/client.js';
 import { session } from './state/store.js';
 import { el, clear, setText, show, qs, qsa } from './lib/dom.js';
-import { formatMoney } from './lib/money.js';
+import { formatMoney, formatDelta } from './lib/money.js';
 import { createBlackjackView } from './games/blackjack.js';
 import { createSlotsView } from './games/slots.js';
 import { createRouletteView } from './games/roulette.js';
@@ -50,7 +50,10 @@ function showView(name) {
 
   if (name === 'blackjack') blackjack.resume();
   if (name === 'history') loadHistory();
-  if (name === 'admin') loadAudit();
+  if (name === 'admin') {
+    renderLimitsForm();
+    loadAudit();
+  }
   window.location.hash = name === 'lobby' ? '' : name;
 }
 
@@ -184,6 +187,7 @@ function renderFloor() {
 async function loadHistory() {
   const body = qs('#history-body');
   clear(body);
+  show(qs('#history-totals'), false);
 
   const { identity } = session.get();
   if (identity?.role === 'GUEST') {
@@ -193,7 +197,8 @@ async function loadHistory() {
   setText(qs('#history-note'), 'Every movement of money on your account.');
 
   try {
-    const { entries } = await api.history(50);
+    const { entries, totals } = await api.history(50);
+    renderHistoryTotals(totals);
     for (const entry of entries) {
       const amount = Number.parseFloat(entry.amount);
       body.append(el('tr', {
@@ -218,6 +223,30 @@ async function loadHistory() {
   } catch (error) {
     toast(error.message, 'error');
   }
+}
+
+/**
+ * Lifetime win/loss, served by the API rather than summed from the rows on screen: the table
+ * shows the most recent 50 entries, so a total added up here would silently mean something
+ * different from what its label claims.
+ */
+function renderHistoryTotals(totals) {
+  const footer = qs('#history-totals');
+  if (!totals) {
+    show(footer, false);
+    return;
+  }
+  const net = Number.parseFloat(totals.net ?? '0');
+
+  setText(qs('#total-wagered'), formatMoney(totals.wagered));
+  setText(qs('#total-returned'), formatMoney(totals.returned));
+
+  const netCell = qs('#total-net');
+  setText(netCell, formatDelta(net));
+  netCell.className = `amount ${net >= 0 ? 'positive' : 'negative'}`;
+  setText(qs('#total-note'), 'Across all play; sign-up and admin credits excluded.');
+
+  show(footer, true);
 }
 
 // ---------------------------------------------------------------- admin
@@ -246,6 +275,39 @@ qs('#admin-credit-form').addEventListener('submit', async (event) => {
     await loadAudit();
   } catch (error) {
     setText(qs('#admin-error'), error.message);
+  }
+});
+
+/** Fills the limits form with what is currently in force. */
+function renderLimitsForm() {
+  if (!tableConfig) return;
+  qs('#limits-min').value = Number(tableConfig.minBet).toFixed(2);
+  qs('#limits-max').value = Number(tableConfig.maxBet).toFixed(2);
+  qs('#limits-max').max = String(tableConfig.maxConfigurableBet);
+  setText(qs('#limits-ceiling'),
+    `The maximum cannot be raised past ${formatMoney(tableConfig.maxConfigurableBet)}, `
+    + 'which is fixed in configuration.');
+}
+
+qs('#admin-limits-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setText(qs('#limits-error'), '');
+  setText(qs('#limits-success'), '');
+
+  const minBet = Number.parseFloat(qs('#limits-min').value);
+  const maxBet = Number.parseFloat(qs('#limits-max').value);
+
+  try {
+    const result = await api.setLimits(minBet, maxBet);
+    setText(qs('#limits-success'),
+      `Table limits are now ${formatMoney(result.minBet)} to ${formatMoney(result.maxBet)}.`);
+
+    // Every bet form validates against these, so refresh what the rest of the UI believes.
+    await loadConfig();
+    renderLimitsForm();
+    await loadAudit();
+  } catch (error) {
+    setText(qs('#limits-error'), error.message);
   }
 });
 

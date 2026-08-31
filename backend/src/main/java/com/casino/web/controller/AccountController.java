@@ -54,7 +54,8 @@ public class AccountController {
         CasinoPrincipal principal = CurrentUser.require();
         if (principal.isGuest()) {
             // Guests have no stored history; that is the point of being a guest.
-            return new AccountResponses.HistoryResponse(java.util.List.of());
+            return new AccountResponses.HistoryResponse(java.util.List.of(),
+                    AccountResponses.PlayTotals.none());
         }
         var account = users.findByUid(principal.subject())
                 .orElseThrow(() -> CasinoException.notFound("Account not found."));
@@ -65,6 +66,8 @@ public class AccountController {
                 .stream()
                 .map(AccountResponses.LedgerEntryView::from)
                 .toList();
-        return new AccountResponses.HistoryResponse(entries);
+        java.math.BigDecimal[] totals = ledger.playTotals(account.getId());
+        return new AccountResponses.HistoryResponse(entries,
+                AccountResponses.PlayTotals.of(totals[0], totals[1]));
     }
 }

@@ -44,7 +44,8 @@ public class ConfigController {
                 rules.dealerHitsSoft17(),
                 rules.blackjackPayout() == 1.5 ? "3:2" : rules.blackjackPayout() + "x",
                 rules.maxSplits(),
-                rules.doubleAfterSplit());
+                rules.doubleAfterSplit(),
+                blackjack.maxHands());
 
         var slotsInfo = new ConfigResponse.SlotsInfo(
                 SlotPaytable.REEL_STRIP.stream().map(Enum::name).toList(),
@@ -63,6 +64,7 @@ public class ConfigController {
         return new ConfigResponse(
                 betValidator.minBet(),
                 betValidator.maxBet(),
+                betValidator.maxConfigurableBet(),
                 betValidator.maxRouletteBets(),
                 blackjackInfo,
                 slotsInfo,

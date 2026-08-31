@@ -68,7 +68,10 @@ casino:
   limits:
     min-bet: "1.00"
     max-bet: "5000.00"
+    # A hard ceiling on what the admin console may raise max-bet to.
+    max-configurable-bet: "1000000.00"
     max-roulette-bets: 20
+    max-blackjack-hands: 4
     max-admin-credit: "1000000.00"
   security:
     max-failed-logins: 5

@@ -55,6 +55,14 @@ export function createRouletteView({ api, onBalance, onError, config }) {
     wheel.append(el('span', { className: 'wheel-marker', text: '\u25bc' }));
   }
 
+  /**
+   * Draws the cloth as twelve rows of three, which is a real layout stood on end.
+   *
+   * <p>In that orientation the three column bets sit at the foot of the grid, one under each
+   * printed column, because a column is the vertical run 1-4-7-... A "2 to 1" box at the end of
+   * every row would be twelve boxes covering only three distinct bets, and each row spans all
+   * three columns anyway, so no single column bet belongs there.
+   */
   function buildCloth() {
     clear(cloth);
     cloth.append(cell({ label: '0', className: 'cell GREEN', type: 'STRAIGHT', selection: '0' }));
@@ -68,14 +76,15 @@ export function createRouletteView({ api, onBalance, onError, config }) {
           selection: String(number),
         }));
       }
-      // The "2 to 1" box at the end of each printed row is a column bet.
-      const columnNumber = ((row[0] - 1) % 3) + 1;
+    }
+
+    for (const columnNumber of [1, 2, 3]) {
       cloth.append(cell({
         label: '2:1',
         className: 'cell outside',
         type: 'COLUMN',
         selection: String(columnNumber),
-        title: `Column ${columnNumber}`,
+        title: `Column ${columnNumber} (${columnNumber}, ${columnNumber + 3}, ${columnNumber + 6}, ...)`,
       }));
     }
 
@@ -104,7 +113,7 @@ export function createRouletteView({ api, onBalance, onError, config }) {
 
     // Mirrors the server's layout rules so an impossible chip is refused before it is sent.
     if (pocketsFor(type, selection) === null) {
-      onError('That is not a valid bet on this layout.');
+      onError('Not a valid bet.');
       return;
     }
     const limits = config() ?? {};
@@ -114,13 +123,13 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       return;
     }
     if (limits.balance !== undefined && totalStaked() + chipValue > limits.balance) {
-      onError('That would stake more than your balance.');
+      onError('Not enough money.');
       return;
     }
 
     const existing = bets.find((b) => b.type === type && b.selection === selection);
     if (!existing && bets.length >= (limits.maxRouletteBets ?? 20)) {
-      onError(`At most ${limits.maxRouletteBets ?? 20} separate bets per spin.`);
+      onError(`At most ${limits.maxRouletteBets ?? 20} bets.`);
       return;
     }
 

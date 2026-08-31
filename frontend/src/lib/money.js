@@ -42,22 +42,22 @@ export function validateBet(raw, { min, max, balance }) {
   const value = typeof raw === 'string' ? Number.parseFloat(raw) : raw;
 
   if (raw === '' || raw === null || raw === undefined || Number.isNaN(value)) {
-    return { valid: false, reason: 'Enter a bet amount.' };
+    return { valid: false, reason: 'Enter a bet.' };
   }
   if (value <= 0) {
-    return { valid: false, reason: 'Bet must be greater than zero.' };
+    return { valid: false, reason: 'Bet must be positive.' };
   }
   if (Math.round(value * 100) !== Number((value * 100).toFixed(4))) {
-    return { valid: false, reason: 'Bets can have at most 2 decimal places.' };
+    return { valid: false, reason: 'Two decimal places max.' };
   }
   if (min !== undefined && value < min) {
-    return { valid: false, reason: `Minimum bet is ${formatMoney(min)}.` };
+    return { valid: false, reason: `Below ${formatMoney(min)} minimum.` };
   }
   if (max !== undefined && value > max) {
-    return { valid: false, reason: `Maximum bet is ${formatMoney(max)}.` };
+    return { valid: false, reason: `Above ${formatMoney(max)} maximum.` };
   }
   if (balance !== undefined && value > balance) {
-    return { valid: false, reason: 'That is more than your balance.' };
+    return { valid: false, reason: 'Not enough money.' };
   }
   return { valid: true, amount: Number(value.toFixed(2)) };
 }

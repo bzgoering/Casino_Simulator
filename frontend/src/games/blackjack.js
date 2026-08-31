@@ -14,8 +14,9 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
   const dealerTotal = qs('#dealer-total');
   const playerHands = qs('#player-hands');
   const outcome = qs('#blackjack-outcome');
-  const betRow = qs('#blackjack-bet-row');
   const betInput = qs('#blackjack-bet');
+  const handsInput = qs('#blackjack-hands');
+  const stakeNote = qs('#blackjack-stake');
   const dealButton = qs('#blackjack-deal');
   const actionRow = qs('#blackjack-actions');
   const actionButtons = qsa('#blackjack-actions button');
@@ -25,19 +26,49 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
   let busy = false;
 
   dealButton.addEventListener('click', deal);
+  betInput.addEventListener('input', showStake);
+  handsInput.addEventListener('input', showStake);
   for (const button of actionButtons) {
     button.addEventListener('click', () => act(button.dataset.action));
   }
 
+  /** Boxes requested, clamped to what the table allows. */
+  function handCount() {
+    const max = config()?.blackjack?.maxHands ?? 4;
+    const value = Math.trunc(Number(handsInput.value));
+    if (!Number.isFinite(value)) return 1;
+    return Math.min(Math.max(value, 1), max);
+  }
+
+  /** Spells out the whole commitment, since every box is charged the same bet. */
+  function showStake() {
+    const hands = handCount();
+    const bet = Number.parseFloat(betInput.value);
+    if (hands < 2 || !Number.isFinite(bet) || bet <= 0) {
+      setText(stakeNote, '');
+      return;
+    }
+    setText(stakeNote, `${hands} × ${formatMoney(bet)} = ${formatMoney(bet * hands)}`);
+  }
+
   async function deal() {
+    const hands = handCount();
+    handsInput.value = String(hands);
+
+    // Each box is charged the bet, so the balance has to cover all of them, not just one.
     const check = validateBet(betInput.value, {
-      min: config()?.minBet, max: config()?.maxBet, balance: config()?.balance,
+      min: config()?.minBet, max: config()?.maxBet,
     });
     if (!check.valid) {
       onError(check.reason);
       return;
     }
-    await run(() => api.dealBlackjack(check.amount));
+    const balance = config()?.balance;
+    if (balance !== undefined && check.amount * hands > balance) {
+      onError('Not enough money.');
+      return;
+    }
+    await run(() => api.dealBlackjack(check.amount, hands));
   }
 
   async function act(action) {
@@ -61,8 +92,16 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
     }
   }
 
+  /**
+   * Disables everything while a request is in flight, and keeps the deal controls disabled for
+   * as long as a hand is live. The row stays on screen rather than being hidden, so the stake
+   * that bought the hand is still visible while it is played.
+   */
   function setBusy(value) {
-    dealButton.disabled = value;
+    const live = Boolean(round) && !round.settled;
+    dealButton.disabled = value || live;
+    betInput.disabled = value || live;
+    handsInput.disabled = value || live;
     for (const button of actionButtons) button.disabled = value;
   }
 
@@ -74,8 +113,8 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
     renderOutcome();
 
     const settled = round.settled;
-    show(betRow, settled);
     show(actionRow, !settled);
+    setBusy(false);
     setText(shoeInfo, `${round.cardsRemaining} cards left in the shoe`);
 
     if (!settled) {
@@ -163,8 +202,8 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
       clear(playerHands);
       setText(outcome, '');
       setText(dealerTotal, '');
-      show(betRow, true);
       show(actionRow, false);
+      setBusy(false);
     }
   }
 

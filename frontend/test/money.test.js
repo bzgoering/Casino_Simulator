@@ -52,19 +52,19 @@ describe('validateBet', () => {
   it('rejects a bet below the table minimum', () => {
     const result = validateBet('0.50', limits);
     expect(result.valid).toBe(false);
-    expect(result.reason).toContain('Minimum bet');
+    expect(result.reason).toContain('minimum');
   });
 
   it('rejects a bet above the table maximum', () => {
     const result = validateBet('9999', limits);
     expect(result.valid).toBe(false);
-    expect(result.reason).toContain('Maximum bet');
+    expect(result.reason).toContain('maximum');
   });
 
   it('rejects a bet larger than the balance', () => {
     const result = validateBet('500', limits);
     expect(result.valid).toBe(false);
-    expect(result.reason).toContain('more than your balance');
+    expect(result.reason).toContain('Not enough money');
   });
 
   it('works when only some limits are supplied', () => {

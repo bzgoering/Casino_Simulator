@@ -112,9 +112,12 @@
 
         <div class="controls">
           <div class="bet-row" id="blackjack-bet-row">
-            <label for="blackjack-bet">Bet</label>
+            <label for="blackjack-bet">Bet per hand</label>
             <input id="blackjack-bet" type="number" min="1" step="1" value="25" />
+            <label for="blackjack-hands">Hands</label>
+            <input id="blackjack-hands" type="number" min="1" max="4" step="1" value="1" />
             <button type="button" class="primary" id="blackjack-deal">Deal</button>
+            <span class="stake-note" id="blackjack-stake"></span>
           </div>
           <div class="action-row" id="blackjack-actions" hidden>
             <button type="button" data-action="HIT">Hit</button>
@@ -162,6 +165,11 @@
             <div class="wheel" id="roulette-wheel" aria-hidden="true"></div>
             <p class="result-pocket" id="roulette-result" role="status" aria-live="polite"></p>
             <ul class="recent" id="roulette-recent" aria-label="Recent results"></ul>
+
+            <div class="placed">
+              <h2>Your bets <span id="roulette-staked"></span></h2>
+              <ul id="roulette-bets"></ul>
+            </div>
           </div>
 
           <div class="cloth-area">
@@ -171,16 +179,12 @@
               <button type="button" class="chip-btn" data-chip="5">$5</button>
               <button type="button" class="chip-btn" data-chip="25">$25</button>
               <button type="button" class="chip-btn" data-chip="100">$100</button>
-            </div>
-            <div class="cloth" id="roulette-cloth"></div>
-            <div class="placed">
-              <h2>Your bets <span id="roulette-staked"></span></h2>
-              <ul id="roulette-bets"></ul>
               <div class="bet-actions">
                 <button type="button" id="roulette-clear">Clear</button>
                 <button type="button" class="primary" id="roulette-spin">Spin</button>
               </div>
             </div>
+            <div class="cloth" id="roulette-cloth"></div>
           </div>
         </div>
       </section>
@@ -193,12 +197,32 @@
             <tr><th>When</th><th>Type</th><th>Game</th><th>Amount</th><th>Balance</th><th>Detail</th></tr>
           </thead>
           <tbody id="history-body"></tbody>
+          <tfoot id="history-totals" hidden>
+            <tr>
+              <th colspan="3">Wagered</th>
+              <td class="amount" id="total-wagered"></td>
+              <td colspan="2"></td>
+            </tr>
+            <tr>
+              <th colspan="3">Returned</th>
+              <td class="amount" id="total-returned"></td>
+              <td colspan="2"></td>
+            </tr>
+            <tr class="net-row">
+              <th colspan="3">Net won / lost</th>
+              <td class="amount" id="total-net"></td>
+              <td colspan="2" class="hint" id="total-note"></td>
+            </tr>
+          </tfoot>
         </table>
       </section>
 
       <section class="view" id="view-admin" hidden>
         <h1>Administration</h1>
-        <p class="subtitle">Credit a balance. Every action here is recorded in the audit log.</p>
+        <p class="subtitle">Credit a balance and set the table limits. Every action here is
+          recorded in the audit log.</p>
+
+        <h2>Credit a balance</h2>
 
         <form class="admin-form" id="admin-credit-form">
           <label for="admin-target">Target UID <span class="hint">(blank credits yourself)</span></label>
@@ -208,6 +232,21 @@
           <button type="submit" class="primary">Credit balance</button>
           <p class="form-error" id="admin-error" role="alert"></p>
           <p class="form-success" id="admin-success" role="status"></p>
+        </form>
+
+        <h2>Table limits</h2>
+        <p class="subtitle">The smallest and largest wager accepted on every game. A change binds
+          on the next bet and survives a restart.</p>
+
+        <form class="admin-form" id="admin-limits-form">
+          <label for="limits-min">Minimum bet</label>
+          <input id="limits-min" type="number" min="0.01" step="0.01" required />
+          <label for="limits-max">Maximum bet</label>
+          <input id="limits-max" type="number" min="0.01" step="0.01" required />
+          <p class="hint" id="limits-ceiling"></p>
+          <button type="submit" class="primary">Save limits</button>
+          <p class="form-error" id="limits-error" role="alert"></p>
+          <p class="form-success" id="limits-success" role="status"></p>
         </form>
 
         <h2>Audit log</h2>

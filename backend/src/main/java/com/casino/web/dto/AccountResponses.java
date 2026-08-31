@@ -41,6 +41,24 @@ public final class AccountResponses {
         }
     }
 
-    public record HistoryResponse(List<LedgerEntryView> entries) {
+    /**
+     * Lifetime play totals, over the whole ledger rather than the page being shown.
+     *
+     * @param wagered  everything staked, as a positive figure
+     * @param returned everything paid back, stakes on wins and pushes included
+     * @param net      returned minus wagered: positive means the account is up on the house
+     */
+    public record PlayTotals(BigDecimal wagered, BigDecimal returned, BigDecimal net) {
+
+        public static PlayTotals of(BigDecimal wagered, BigDecimal returned) {
+            return new PlayTotals(wagered, returned, returned.subtract(wagered));
+        }
+
+        public static PlayTotals none() {
+            return new PlayTotals(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
+    public record HistoryResponse(List<LedgerEntryView> entries, PlayTotals totals) {
     }
 }

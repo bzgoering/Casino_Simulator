@@ -87,6 +87,24 @@ describe('resolving a bet to its pockets', () => {
     expect(pocketsFor('COLUMN', '1')).toEqual(expect.arrayContaining([1, 4, 34]));
   });
 
+  it('gives each of the three column bets a distinct set of twelve pockets', () => {
+    // The cloth draws one "2 to 1" box per column. When they were all built from the same
+    // selection, every box lit up together and only one column was ever really bettable.
+    const columns = ['1', '2', '3'].map((n) => pocketsFor('COLUMN', n));
+
+    for (const pockets of columns) {
+      expect(pockets).toHaveLength(12);
+      expect(pockets).not.toContain(0);
+    }
+    expect(columns[0]).toContain(1);
+    expect(columns[1]).toContain(2);
+    expect(columns[2]).toContain(3);
+
+    // Together they cover 1-36 exactly once.
+    const all = columns.flat().sort((a, b) => a - b);
+    expect(new Set(all).size).toBe(36);
+  });
+
   it('rejects unrecognised outside selections', () => {
     expect(pocketsFor('COLOR', 'GREEN')).toBeNull();
     expect(pocketsFor('DOZEN', '4')).toBeNull();

@@ -60,7 +60,7 @@ class GameApiTest extends ApiTestSupport {
                             {"bet": 99999.00}
                             """, token))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.message").value("Maximum bet is 5000.00."));
+                    .andExpect(jsonPath("$.message").value("Above 5000.00 maximum."));
         }
 
         @Test
@@ -106,8 +106,7 @@ class GameApiTest extends ApiTestSupport {
                             {"bet": 500.00}
                             """, token))
                     .andExpect(status().isUnprocessableEntity())
-                    .andExpect(jsonPath("$.message").value(
-                            org.hamcrest.Matchers.containsString("Not enough balance")));
+                    .andExpect(jsonPath("$.message").value("Not enough money."));
         }
     }
 
@@ -276,6 +275,71 @@ class GameApiTest extends ApiTestSupport {
                                 """, token))
                         .andExpect(status().isConflict());
             }
+        }
+
+        @Test
+        @DisplayName("a four-hand deal takes four stakes and returns four hands")
+        void multiHandDealStakesEveryBox() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode round = perform(postJson("/api/games/blackjack/deal", """
+                    {"bet": 25.00, "hands": 4}
+                    """, token));
+
+            assertThat(round.get("hands")).hasSize(4);
+            assertThat(round.get("totalStaked").decimalValue()).isEqualByComparingTo("100.00");
+            for (JsonNode hand : round.get("hands")) {
+                assertThat(hand.get("bet").decimalValue()).isEqualByComparingTo("25.00");
+                assertThat(hand.get("cards")).hasSize(2);
+            }
+            // 10,000 opening balance less the four stakes, before anything is paid back.
+            if (!round.get("settled").asBoolean()) {
+                assertThat(round.get("balance").decimalValue()).isEqualByComparingTo("9900.00");
+            }
+        }
+
+        @Test
+        @DisplayName("omitting the hand count deals a single box")
+        void handCountDefaultsToOne() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode round = perform(postJson("/api/games/blackjack/deal", """
+                    {"bet": 10.00}
+                    """, token));
+
+            assertThat(round.get("hands")).hasSize(1);
+            assertThat(round.get("totalStaked").decimalValue()).isEqualByComparingTo("10.00");
+        }
+
+        @Test
+        @DisplayName("more hands than the table allows is refused")
+        void tooManyHandsRefused() throws Exception {
+            String token = token(guestSession());
+
+            mvc.perform(postJson("/api/games/blackjack/deal", """
+                            {"bet": 10.00, "hands": 5}
+                            """, token))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("At most 4 hands."));
+        }
+
+        @Test
+        @DisplayName("a player who cannot cover every box is dealt nothing at all")
+        void underfundedMultiHandDealIsRefusedWhole() throws Exception {
+            // A new player holds 100.00; four boxes at 40.00 needs 160.00.
+            String token = token(signUp("multihand_player", "correct-horse-9"));
+
+            mvc.perform(postJson("/api/games/blackjack/deal", """
+                            {"bet": 40.00, "hands": 4}
+                            """, token))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.message").value("Not enough money."));
+
+            // Nothing was taken and no round was left open.
+            JsonNode me = perform(getAs("/api/me", token));
+            assertThat(me.get("balance").decimalValue()).isEqualByComparingTo("100.00");
+            mvc.perform(getAs("/api/games/blackjack/current", token))
+                    .andExpect(status().isNotFound());
         }
 
         @Test

@@ -3,6 +3,7 @@ package com.casino.game.blackjack;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.casino.game.common.Card;
 import com.casino.game.common.Money;
 import com.casino.game.common.StackedCardSource;
 import java.math.BigDecimal;
@@ -24,6 +25,10 @@ class BlackjackRoundTest {
 
     private static BlackjackRound round(String... cards) {
         return new BlackjackRound(STANDARD, StackedCardSource.of(cards), BET);
+    }
+
+    private static BlackjackRound round(int boxes, String... cards) {
+        return new BlackjackRound(STANDARD, StackedCardSource.of(cards), BET, boxes);
     }
 
     @Nested
@@ -330,6 +335,123 @@ class BlackjackRoundTest {
 
             assertThat(round.hands().get(0).value().total()).isEqualTo(21);
             assertThat(round.hands().get(0).status()).isEqualTo(HandStatus.STAND);
+        }
+    }
+
+    @Nested
+    @DisplayName("multiple hands")
+    class MultipleHands {
+
+        @Test
+        @DisplayName("cards go round the table before the second card, as a live dealer deals")
+        void dealsOneCardToEachBoxBeforeTheSecond() {
+            // Order dealt: box1, box2, box3, dealer up, box1, box2, box3, dealer hole.
+            BlackjackRound round = round(3,
+                    "2S", "3S", "4S", "9D", "5H", "6H", "7H", "8C");
+
+            assertThat(round.hands()).hasSize(3);
+            assertThat(round.hands().get(0).cards()).extracting(Card::code)
+                    .containsExactly("2S", "5H");
+            assertThat(round.hands().get(1).cards()).extracting(Card::code)
+                    .containsExactly("3S", "6H");
+            assertThat(round.hands().get(2).cards()).extracting(Card::code)
+                    .containsExactly("4S", "7H");
+            assertThat(round.dealerUpcard().code()).isEqualTo("9D");
+        }
+
+        @Test
+        @DisplayName("every box carries the opening bet, so the stake is the bet times the boxes")
+        void stakesEveryBox() {
+            BlackjackRound round = round(4, "2S", "3S", "4S", "5S", "9D",
+                    "6H", "7H", "8H", "9H", "8C");
+
+            assertThat(round.totalStaked()).isEqualByComparingTo("40.00");
+            assertThat(round.hands()).allSatisfy(
+                    hand -> assertThat(hand.bet()).isEqualByComparingTo("10.00"));
+        }
+
+        @Test
+        @DisplayName("boxes are played left to right")
+        void playsBoxesInOrder() {
+            BlackjackRound round = round(2, "10S", "10H", "9D", "5H", "6H", "8C", "2D");
+
+            assertThat(round.activeHandIndex()).isZero();
+            round.apply(PlayerAction.STAND, PLENTY);
+            assertThat(round.activeHandIndex()).isEqualTo(1);
+            assertThat(round.isSettled()).isFalse();
+
+            round.apply(PlayerAction.STAND, PLENTY);
+            assertThat(round.isSettled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("a natural on one box does not end the round for the others")
+        void naturalOnOneBoxLeavesTheOthersLive() {
+            // Box 1: AS + KH = natural. Box 2: 5S + 6H = 11. Dealer 9D/8C = 17.
+            BlackjackRound round = round(2, "AS", "5S", "9D", "KH", "6H", "8C", "10D");
+
+            assertThat(round.hands().get(0).status()).isEqualTo(HandStatus.BLACKJACK);
+            assertThat(round.isSettled()).isFalse();
+            // The natural is skipped; the live box is the one asked to act.
+            assertThat(round.activeHandIndex()).isEqualTo(1);
+
+            round.apply(PlayerAction.HIT, PLENTY); // 11 + 10 = 21
+
+            assertThat(round.isSettled()).isTrue();
+            assertThat(round.hands().get(0).outcome()).isEqualTo(HandOutcome.BLACKJACK);
+            assertThat(round.hands().get(1).outcome()).isEqualTo(HandOutcome.WIN);
+            // 25.00 on the natural plus 20.00 on the 21, against 20.00 staked.
+            assertThat(round.netResult()).isEqualByComparingTo("25.00");
+        }
+
+        @Test
+        @DisplayName("a dealer natural still takes every box at once")
+        void dealerNaturalEndsEveryBox() {
+            BlackjackRound round = round(3, "10S", "9S", "8S", "AD", "7H", "6H", "5H", "KC");
+
+            assertThat(round.isSettled()).isTrue();
+            assertThat(round.hands()).allSatisfy(
+                    hand -> assertThat(hand.outcome()).isEqualTo(HandOutcome.LOSE));
+            assertThat(round.netResult()).isEqualByComparingTo("-30.00");
+        }
+
+        @Test
+        @DisplayName("a split on one box inserts the new hand next, ahead of the other boxes")
+        void splitInsertsBesideItsOwnBox() {
+            // Box 1: 8S/8H splits. Box 2: 10D/10C stands pat.
+            BlackjackRound round = round(2,
+                    "8S", "10D", "9D", "8H", "10C", "7C", "2H", "3H");
+
+            round.apply(PlayerAction.SPLIT, PLENTY);
+
+            assertThat(round.hands()).hasSize(3);
+            assertThat(round.hands().get(0).isFromSplit()).isTrue();
+            assertThat(round.hands().get(1).isFromSplit()).isTrue();
+            // The untouched box stays at the end, still holding its original two cards.
+            assertThat(round.hands().get(2).cards()).extracting(Card::code)
+                    .containsExactly("10D", "10C");
+            assertThat(round.totalStaked()).isEqualByComparingTo("30.00");
+        }
+
+        @Test
+        @DisplayName("the split allowance scales with the boxes rather than capping the table")
+        void splitAllowanceScalesWithBoxes() {
+            // Four boxes of eights: splitting the first must still be legal even though four
+            // hands are already in play.
+            BlackjackRound round = round(4,
+                    "8S", "8D", "8C", "8H", "9D",
+                    "8S", "8D", "8C", "8H", "7C",
+                    "2H");
+
+            assertThat(round.legalActions(PLENTY)).contains(PlayerAction.SPLIT);
+        }
+
+        @Test
+        @DisplayName("fewer than one box is not a round")
+        void rejectsZeroBoxes() {
+            assertThatThrownBy(() -> round(0, "2S", "3S", "4S", "5S"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("handCount");
         }
     }
 }

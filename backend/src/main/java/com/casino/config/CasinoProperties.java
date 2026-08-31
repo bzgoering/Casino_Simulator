@@ -29,12 +29,17 @@ public record CasinoProperties(Jwt jwt, Guest guest, Limits limits, Security sec
     }
 
     /**
-     * @param minBet          smallest accepted wager
-     * @param maxBet          largest accepted wager per hand or spin
-     * @param maxRouletteBets most chips placeable on a single roulette spin
-     * @param maxAdminCredit  ceiling on a single administrative credit
+     * @param minBet              smallest accepted wager, unless an admin has changed it
+     * @param maxBet              largest accepted wager per hand or spin, unless an admin has
+     *                            changed it
+     * @param maxConfigurableBet  hard ceiling on the maximum bet an admin may set; deliberately
+     *                            not adjustable through the admin console
+     * @param maxRouletteBets     most chips placeable on a single roulette spin
+     * @param maxBlackjackHands   most boxes one player may take in a single blackjack round
+     * @param maxAdminCredit      ceiling on a single administrative credit
      */
-    public record Limits(String minBet, String maxBet, int maxRouletteBets, String maxAdminCredit) {
+    public record Limits(String minBet, String maxBet, String maxConfigurableBet,
+                         int maxRouletteBets, int maxBlackjackHands, String maxAdminCredit) {
     }
 
     /**

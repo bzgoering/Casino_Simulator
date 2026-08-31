@@ -64,7 +64,7 @@ public class WalletService {
             GuestSession session = guests.require(principal.subject());
             BigDecimal balance = session.balance();
             if (balance.compareTo(stake) < 0) {
-                throw insufficientFunds(balance, stake);
+                throw insufficientFunds();
             }
             BigDecimal updated = Money.scaled(balance.subtract(stake));
             guests.updateBalance(session, updated);
@@ -74,7 +74,7 @@ public class WalletService {
         UserAccount account = lockAccount(principal);
         BigDecimal balance = account.getBalance();
         if (balance.compareTo(stake) < 0) {
-            throw insufficientFunds(balance, stake);
+            throw insufficientFunds();
         }
         BigDecimal updated = Money.scaled(balance.subtract(stake));
         account.setBalance(updated);
@@ -95,7 +95,7 @@ public class WalletService {
                              GameType game, String roundId, String detail) {
         BigDecimal payout = Money.scaled(amount);
         if (payout.signum() < 0) {
-            throw CasinoException.badRequest("A credit cannot be negative.");
+            throw CasinoException.badRequest("Credit cannot be negative.");
         }
 
         if (principal.isGuest()) {
@@ -153,13 +153,16 @@ public class WalletService {
     private static BigDecimal requirePositive(BigDecimal amount) {
         BigDecimal scaled = Money.scaled(amount);
         if (!Money.isPositive(scaled)) {
-            throw CasinoException.badRequest("Bet must be greater than zero.");
+            throw CasinoException.badRequest("Bet must be positive.");
         }
         return scaled;
     }
 
-    private static CasinoException insufficientFunds(BigDecimal balance, BigDecimal stake) {
-        return new CasinoException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Not enough balance for that bet. You have " + balance + " and tried to stake " + stake + ".");
+    /**
+     * Deliberately says only that the balance is short. The figures are already on screen, and
+     * the player is told what they can do about it, not audited back at themselves.
+     */
+    private static CasinoException insufficientFunds() {
+        return new CasinoException(HttpStatus.UNPROCESSABLE_ENTITY, "Not enough money.");
     }
 }

@@ -38,11 +38,11 @@ public class GameController {
         this.roulette = roulette;
     }
 
-    /** Deals a new blackjack hand and takes the opening bet. */
+    /** Deals a new blackjack round and takes the opening bet on every box. */
     @PostMapping("/blackjack/deal")
-    public BlackjackResponse deal(@Valid @RequestBody GameRequests.BetRequest request) {
+    public BlackjackResponse deal(@Valid @RequestBody GameRequests.BlackjackDealRequest request) {
         CasinoPrincipal principal = CurrentUser.require();
-        return BlackjackResponse.from(blackjack.deal(principal, request.bet()));
+        return BlackjackResponse.from(blackjack.deal(principal, request.bet(), request.handCount()));
     }
 
     /** Applies HIT, STAND, DOUBLE or SPLIT to the active hand. */

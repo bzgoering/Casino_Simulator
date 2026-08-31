@@ -39,14 +39,17 @@ public class AdminService {
     private final AdminAuditRepository audit;
     private final WalletService wallet;
     private final GuestSessionService guests;
+    private final BetValidator betValidator;
     private final BigDecimal maxCredit;
 
     public AdminService(UserAccountRepository users, AdminAuditRepository audit, WalletService wallet,
-                        GuestSessionService guests, CasinoProperties properties) {
+                        GuestSessionService guests, BetValidator betValidator,
+                        CasinoProperties properties) {
         this.users = users;
         this.audit = audit;
         this.wallet = wallet;
         this.guests = guests;
+        this.betValidator = betValidator;
         this.maxCredit = Money.of(properties.limits().maxAdminCredit());
     }
 
@@ -73,7 +76,7 @@ public class AdminService {
         BigDecimal credit = validateAmount(amount);
         String ref = targetRef == null ? "" : targetRef.trim();
         if (ref.isEmpty()) {
-            throw CasinoException.badRequest("A target UID is required.");
+            throw CasinoException.badRequest("Target UID required.");
         }
 
         Optional<UserAccount> account = users.findByUid(ref);
@@ -94,7 +97,34 @@ public class AdminService {
             return new CreditResult(ref, "GUEST", "guest", credit, balance);
         }
 
-        throw CasinoException.notFound("No account or active guest session matches that UID.");
+        throw CasinoException.notFound("No such UID.");
+    }
+
+    /**
+     * Changes the house betting limits.
+     *
+     * <p>Audited like a credit: a limit change is not a movement of money, but it decides how
+     * much money every subsequent bet may move, so it belongs in the same trail. The ceiling on
+     * the maximum stays in configuration and is enforced by {@link BetValidator}.
+     *
+     * @return the limits now in force
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public LimitsResult updateLimits(CasinoPrincipal actor, BigDecimal minBet, BigDecimal maxBet,
+                                     String sourceIp) {
+        betValidator.updateLimits(minBet, maxBet, actor.username());
+
+        audit.save(new AdminAuditEntry(actor.subject(), actor.username(), "SET_TABLE_LIMITS",
+                betValidator.minBet() + "-" + betValidator.maxBet(), "TABLE", null, sourceIp));
+        log.info("Admin {} set table limits to {} - {}", actor.username(),
+                betValidator.minBet(), betValidator.maxBet());
+        return new LimitsResult(betValidator.minBet(), betValidator.maxBet(),
+                betValidator.maxConfigurableBet());
+    }
+
+    /** The limits in force, for the admin console. */
+    public record LimitsResult(BigDecimal minBet, BigDecimal maxBet, BigDecimal maxConfigurableBet) {
     }
 
     private void recordAudit(CasinoPrincipal actor, String targetRef, String targetKind,
@@ -105,14 +135,14 @@ public class AdminService {
 
     private BigDecimal validateAmount(BigDecimal amount) {
         if (amount == null || !Money.isPositive(amount)) {
-            throw CasinoException.badRequest("Credit amount must be greater than zero.");
+            throw CasinoException.badRequest("Credit must be positive.");
         }
         if (amount.stripTrailingZeros().scale() > 2) {
-            throw CasinoException.badRequest("Credit can have at most 2 decimal places.");
+            throw CasinoException.badRequest("Two decimal places max.");
         }
         BigDecimal credit = Money.scaled(amount);
         if (credit.compareTo(maxCredit) > 0) {
-            throw CasinoException.badRequest("A single credit cannot exceed " + maxCredit + ".");
+            throw CasinoException.badRequest("Credit above " + maxCredit + ".");
         }
         return credit;
     }

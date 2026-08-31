@@ -48,6 +48,7 @@ npm run dev        # http://localhost:5173, proxies /api to :8080
 | Gets a UID | session id | UUID at sign-up | UUID at sign-up |
 | History kept | no | yes | yes |
 | Can credit balances | no | no | **yes** |
+| Can set table limits | no | no | **yes** |
 
 **Guests leave no trace.** This is enforced by architecture rather than policy: a guest balance
 lives in an in-memory session with a 2-hour idle TTL and never touches SQL. The trade-off is that
@@ -70,6 +71,8 @@ docker compose exec db psql -U casino -d casino \
 
 Sign out and back in to pick up the new role.
 
+An admin can then credit balances and set the table limits from the Admin tab.
+
 ---
 
 ## The games
@@ -83,9 +86,16 @@ behaves.
 - Dealer stands on all 17s (configurable to H17)
 - Blackjack pays 3:2
 - Double on any first two cards; double after split allowed
-- Split up to 3 times (4 hands); split aces get one card each and stand
+- Split up to 3 times per box; split aces get one card each and stand
 - 21 after a split is an ordinary 21, not a 3:2 natural
 - Dealer peeks for a natural behind an ace or a ten
+- Up to **4 boxes** in one round, each carrying the same bet
+
+Playing several boxes deals as a live table does: one card to every box, the dealer upcard, a
+second card to every box, then the hole card. Dealing each box out in turn would consume the shoe
+in a different order and quietly change the game. The whole commitment is debited before a card
+is dealt, so a player who can cover three of four boxes is dealt nothing rather than a partly
+funded round, and a natural on one box finishes only that box while the rest play on.
 
 The hole card is genuinely absent from the JSON until the reveal, not merely hidden in the UI.
 `GameApiTest` asserts this across many hands.
@@ -201,18 +211,19 @@ stolen token stays valid until it expires.
 ## Tests
 
 ```bash
-cd backend  && ./mvnw test      # 136 tests
-cd frontend && npm test         # 56 tests
+cd backend  && ./mvnw test      # 153 tests
+cd frontend && npm test         # 61 tests
 ```
 
-**Backend (136)** covers engine rules against scripted decks (naturals, splits, split aces,
-doubling, dealer draw rules, bust handling), exhaustive RTP and house-edge verification, and
-full HTTP-level integration tests on H2 spanning auth, the games, the authorisation boundary and
-the admin flows.
+**Backend (153)** covers engine rules against scripted decks (naturals, splits, split aces,
+doubling, dealer draw rules, bust handling, multi-box dealing order and settlement), exhaustive
+RTP and house-edge verification, and full HTTP-level integration tests on H2 spanning auth, the
+games, the authorisation boundary and the admin flows including limit changes.
 
-**Frontend (56)** covers money formatting and bet validation, card parsing, the client-side
-roulette geometry including the forged-bet cases the server also rejects, and the API client's
-session, error and network handling against a mocked `fetch`.
+**Frontend (61)** covers money formatting and bet validation, card parsing, the client-side
+roulette geometry including the forged-bet cases the server also rejects, the rendered roulette
+cloth under jsdom, and the API client's session, error and network handling against a mocked
+`fetch`.
 
 Two real bugs were found and fixed by these tests during development:
 
@@ -220,6 +231,10 @@ Two real bugs were found and fixed by these tests during development:
    as a natural and it escaped the double-after-split rule.
 2. A malformed enum in a request body produced a 500 instead of a 400, which both misreported the
    error and logged at ERROR level, letting bad input flood the logs.
+3. Every "2 to 1" box on the roulette cloth was built from the same column selection, so clicking
+   one highlighted all twelve and only column 1 was ever really bettable. The layout functions
+   were correct throughout; the fault was in how the cloth was drawn, which is why the cloth is
+   now tested through the DOM and not only through its geometry.
 
 ---
 
@@ -232,14 +247,15 @@ Two real bugs were found and fixed by these tests during development:
 | POST | `/api/auth/guest` | public | Start a guest session with $10,000 |
 | GET | `/api/config` | public | Limits, paytables, wheel layout |
 | GET | `/api/me` | any | Current identity and balance |
-| GET | `/api/me/history` | any | Own ledger (empty for guests) |
-| POST | `/api/games/blackjack/deal` | any | Start a hand |
+| GET | `/api/me/history` | any | Own ledger plus lifetime play totals (empty for guests) |
+| POST | `/api/games/blackjack/deal` | any | Start a round on 1-4 boxes |
 | POST | `/api/games/blackjack/action` | any | HIT / STAND / DOUBLE / SPLIT |
 | GET | `/api/games/blackjack/current` | any | Reconnect to a hand in progress |
 | POST | `/api/games/slots/spin` | any | Spin the reels |
 | POST | `/api/games/roulette/spin` | any | Spin against every chip placed |
 | POST | `/api/admin/credit` | admin | Credit any account or guest session by UID |
 | POST | `/api/admin/credit/self` | admin | Credit your own balance |
+| POST | `/api/admin/limits` | admin | Set the minimum and maximum bet |
 | GET | `/api/admin/audit` | admin | Privileged-action audit log |
 
 "any" means any authenticated caller, guests included, since guests hold a real token too.
@@ -266,5 +282,12 @@ Set through the environment; see `.env.example`.
 | `SPRING_PROFILES_ACTIVE` | `prod` | `dev` adds verbose logging and an ephemeral JWT key |
 | `CASINO_SECURITY_ALLOWED_ORIGINS` | localhost:5173, localhost:8081 | CORS allow-list |
 
-Table limits, the guest TTL and the lockout policy live under `casino:` in
+The guest TTL, the lockout policy and the opening table limits live under `casino:` in
 `backend/src/main/resources/application.yml`.
+
+The minimum and maximum bet are adjustable at runtime from the admin console, which persists them
+to a single-row `table_limits` table so a change survives a restart. Until an admin sets them the
+configured values apply, so a fresh database needs no seed step. How high the maximum may go is
+fixed by `casino.limits.max-configurable-bet` and is deliberately *not* reachable from the
+console: an admin account should not be able to open the tables to arbitrary stakes without a
+deploy. Every change is written to `admin_audit` alongside the credits.

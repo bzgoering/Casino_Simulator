@@ -29,44 +29,75 @@ public final class BlackjackRound {
     private final List<BlackjackHand> hands = new ArrayList<>();
     private final List<Card> dealerCards = new ArrayList<>();
 
+    private final int startingHands;
+
     private RoundPhase phase = RoundPhase.PLAYER_TURN;
     private int activeHandIndex;
     private boolean dealerHoleRevealed;
     private BigDecimal totalStaked;
 
     public BlackjackRound(BlackjackRules rules, CardSource shoe, BigDecimal bet) {
-        this.rules = rules;
-        this.shoe = shoe;
-        this.totalStaked = Money.scaled(bet);
-
-        BlackjackHand first = new BlackjackHand(bet, false, false, 0);
-        hands.add(first);
-
-        // Real dealing order: player, dealer up, player, dealer hole.
-        first.addCard(shoe.deal());
-        dealerCards.add(shoe.deal());
-        first.addCard(shoe.deal());
-        dealerCards.add(shoe.deal());
-
-        resolveOpeningNaturals(first);
+        this(rules, shoe, bet, 1);
     }
 
     /**
-     * Dealer peek plus the player natural. If the dealer shows an ace or a ten they check the
-     * hole card immediately, which ends the round before the player can risk any more money.
+     * Deals a round across {@code handCount} boxes, each carrying the same opening bet.
+     *
+     * <p>Multiple boxes are dealt exactly as a live table does: one card to every box in order,
+     * then the dealer upcard, then a second card to every box, then the hole card. Dealing each
+     * box to completion in turn would consume the shoe in a different order and quietly change
+     * the game.
      */
-    private void resolveOpeningNaturals(BlackjackHand playerHand) {
+    public BlackjackRound(BlackjackRules rules, CardSource shoe, BigDecimal bet, int handCount) {
+        if (handCount < 1) {
+            throw new IllegalArgumentException("handCount must be >= 1");
+        }
+        this.rules = rules;
+        this.shoe = shoe;
+        this.startingHands = handCount;
+        this.totalStaked = Money.scaled(bet).multiply(BigDecimal.valueOf(handCount));
+
+        for (int i = 0; i < handCount; i++) {
+            hands.add(new BlackjackHand(bet, false, false, 0));
+        }
+
+        // Real dealing order: a card to every box, dealer up, a second card to every box,
+        // dealer hole.
+        for (BlackjackHand hand : hands) {
+            hand.addCard(shoe.deal());
+        }
+        dealerCards.add(shoe.deal());
+        for (BlackjackHand hand : hands) {
+            hand.addCard(shoe.deal());
+        }
+        dealerCards.add(shoe.deal());
+
+        resolveOpeningNaturals();
+    }
+
+    /**
+     * Dealer peek plus any player naturals. If the dealer shows an ace or a ten they check the
+     * hole card immediately, which ends the round before the player can risk any more money.
+     *
+     * <p>With several boxes in play a natural finishes only the box holding it: the remaining
+     * boxes still have to be played out, so the round ends here only when the dealer turns a
+     * natural or every box is already resolved.
+     */
+    private void resolveOpeningNaturals() {
         boolean dealerCouldHaveNatural = dealerUpcard().rank() == Rank.ACE
                 || dealerUpcard().rank().blackjackValue() == 10;
         boolean dealerHasNatural = dealerCouldHaveNatural && HandValue.evaluate(dealerCards).is21();
-        boolean playerHasNatural = playerHand.isNaturalBlackjack();
 
-        if (playerHasNatural) {
-            playerHand.setStatus(HandStatus.BLACKJACK);
+        for (BlackjackHand hand : hands) {
+            if (hand.isNaturalBlackjack()) {
+                hand.setStatus(HandStatus.BLACKJACK);
+            }
         }
-        if (dealerHasNatural || playerHasNatural) {
+        if (dealerHasNatural) {
             settle();
+            return;
         }
+        advance();
     }
 
     /** Applies a player decision to the currently active hand. */
@@ -75,7 +106,7 @@ public final class BlackjackRound {
             throw new IllegalStateException("Round is already settled");
         }
         BlackjackHand hand = activeHand();
-        List<PlayerAction> legal = hand.legalActions(rules, availableBalance, hands.size());
+        List<PlayerAction> legal = hand.legalActions(rules, availableBalance, hands.size(), maxHands());
         if (!legal.contains(action)) {
             throw new IllegalArgumentException("Illegal action " + action + "; legal actions are " + legal);
         }
@@ -215,6 +246,20 @@ public final class BlackjackRound {
         return Collections.unmodifiableList(hands);
     }
 
+    /** Boxes dealt at the start of the round, before any split. */
+    public int startingHands() {
+        return startingHands;
+    }
+
+    /**
+     * Ceiling on hands in play. Each box may be split up to the table maximum, so the allowance
+     * scales with the number of boxes rather than being a flat cap that a four-box round would
+     * already exceed before a single split.
+     */
+    private int maxHands() {
+        return startingHands * (rules.maxSplits() + 1);
+    }
+
     public Card dealerUpcard() {
         return dealerCards.get(0);
     }
@@ -265,6 +310,6 @@ public final class BlackjackRound {
         if (phase == RoundPhase.SETTLED) {
             return List.of();
         }
-        return activeHand().legalActions(rules, availableBalance, hands.size());
+        return activeHand().legalActions(rules, availableBalance, hands.size(), maxHands());
     }
 }

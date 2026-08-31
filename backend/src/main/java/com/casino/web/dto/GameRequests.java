@@ -3,6 +3,8 @@ package com.casino.web.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -21,6 +23,29 @@ public final class GameRequests {
             @DecimalMin(value = "0.01", message = "Bet must be greater than zero.")
             @Digits(integer = 12, fraction = 2, message = "Bet can have at most 2 decimal places.")
             BigDecimal bet) {
+    }
+
+    /**
+     * An opening blackjack bet.
+     *
+     * @param bet   the stake on each box
+     * @param hands how many boxes to play; absent means one. The server caps this and charges
+     *              {@code bet} for every box, so four hands at $25 costs $100.
+     */
+    public record BlackjackDealRequest(
+            @NotNull(message = "A bet amount is required.")
+            @DecimalMin(value = "0.01", message = "Bet must be greater than zero.")
+            @Digits(integer = 12, fraction = 2, message = "Bet can have at most 2 decimal places.")
+            BigDecimal bet,
+
+            @Min(value = 1, message = "Play at least one hand.")
+            @Max(value = 8, message = "Too many hands.")
+            Integer hands) {
+
+        /** Boxes requested, defaulting to one when the client does not say. */
+        public int handCount() {
+            return hands == null ? 1 : hands;
+        }
     }
 
     /**
