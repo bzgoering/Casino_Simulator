@@ -11,6 +11,8 @@ import com.casino.repository.UserAccountRepository;
 import com.casino.security.CasinoPrincipal;
 import com.casino.web.error.CasinoException;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,30 +103,36 @@ public class AdminService {
     }
 
     /**
-     * Changes the house betting limits.
+     * Changes one game's betting limits.
      *
      * <p>Audited like a credit: a limit change is not a movement of money, but it decides how
-     * much money every subsequent bet may move, so it belongs in the same trail. The ceiling on
-     * the maximum stays in configuration and is enforced by {@link BetValidator}.
+     * much money every subsequent bet on that game may move, so it belongs in the same trail.
+     * The ceiling on the maximum stays in configuration and is enforced by {@link BetValidator}.
      *
-     * @return the limits now in force
+     * @return the limits now in force, for every game
      */
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
-    public LimitsResult updateLimits(CasinoPrincipal actor, BigDecimal minBet, BigDecimal maxBet,
-                                     String sourceIp) {
-        betValidator.updateLimits(minBet, maxBet, actor.username());
+    public LimitsResult updateLimits(CasinoPrincipal actor, GameType game, BigDecimal minBet,
+                                     BigDecimal maxBet, String sourceIp) {
+        BetValidator.Limits updated = betValidator.updateLimits(game, minBet, maxBet, actor.username());
 
-        audit.save(new AdminAuditEntry(actor.subject(), actor.username(), "SET_TABLE_LIMITS",
-                betValidator.minBet() + "-" + betValidator.maxBet(), "TABLE", null, sourceIp));
-        log.info("Admin {} set table limits to {} - {}", actor.username(),
-                betValidator.minBet(), betValidator.maxBet());
-        return new LimitsResult(betValidator.minBet(), betValidator.maxBet(),
-                betValidator.maxConfigurableBet());
+        audit.save(new AdminAuditEntry(actor.subject(), actor.username(), "SET_GAME_LIMITS",
+                game + " " + updated.min() + "-" + updated.max(), "TABLE", null, sourceIp));
+        log.info("Admin {} set {} limits to {} - {}", actor.username(), game,
+                updated.min(), updated.max());
+        return currentLimits();
     }
 
-    /** The limits in force, for the admin console. */
-    public record LimitsResult(BigDecimal minBet, BigDecimal maxBet, BigDecimal maxConfigurableBet) {
+    /** Every game's limits and the ceiling an admin may not exceed. */
+    public LimitsResult currentLimits() {
+        Map<String, BetValidator.Limits> byGame = new LinkedHashMap<>();
+        betValidator.all().forEach((game, limits) -> byGame.put(game.name(), limits));
+        return new LimitsResult(byGame, betValidator.maxConfigurableBet());
+    }
+
+    /** The limits in force, keyed by game name, for the admin console. */
+    public record LimitsResult(Map<String, BetValidator.Limits> games, BigDecimal maxConfigurableBet) {
     }
 
     private void recordAudit(CasinoPrincipal actor, String targetRef, String targetKind,

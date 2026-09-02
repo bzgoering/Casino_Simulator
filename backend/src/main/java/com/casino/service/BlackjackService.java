@@ -72,7 +72,7 @@ public class BlackjackService {
     @Transactional
     public BlackjackRoundView deal(CasinoPrincipal principal, BigDecimal requestedBet, int handCount) {
         int boxes = validateHandCount(handCount);
-        BigDecimal stake = betValidator.validate(requestedBet);
+        BigDecimal stake = betValidator.validate(GameType.BLACKJACK, requestedBet);
         BigDecimal committed = Money.scaled(stake.multiply(BigDecimal.valueOf(boxes)));
         BlackjackTable table = tableFor(principal);
 

@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * variables. No secret has a usable default baked into the source.
  */
 @ConfigurationProperties(prefix = "casino")
-public record CasinoProperties(Jwt jwt, Guest guest, Limits limits, Security security) {
+public record CasinoProperties(Jwt jwt, Guest guest, Limits limits, Slots slots, Security security) {
 
     /**
      * @param secret     HMAC-SHA256 signing key, at least 32 bytes. Supplied via
@@ -40,6 +40,21 @@ public record CasinoProperties(Jwt jwt, Guest guest, Limits limits, Security sec
      */
     public record Limits(String minBet, String maxBet, String maxConfigurableBet,
                          int maxRouletteBets, int maxBlackjackHands, String maxAdminCredit) {
+    }
+
+    /**
+     * Slot machine settings.
+     *
+     * <p>A slot machine is not a table game and is deliberately not covered by the admin-managed
+     * table limits: there is no minimum, because a machine takes whatever denomination the
+     * player dials in. The maximum here is a guard on the total a single spin may commit, and it
+     * stays in configuration rather than in the admin console.
+     *
+     * @param creditOptions the fixed credit buttons on the cabinet; each credit lights one more
+     *                      payline, so no option may exceed the number of paylines
+     * @param maxTotalBet   ceiling on bet-per-line times credits for one spin
+     */
+    public record Slots(java.util.List<Integer> creditOptions, String maxTotalBet) {
     }
 
     /**

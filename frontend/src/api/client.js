@@ -98,7 +98,7 @@ export class CasinoApi {
       const error = new ApiError(
         response.status,
         payload?.error ?? 'ERROR',
-        payload?.message ?? 'Something went wrong.',
+        payload?.message ?? fallbackMessage(response.status),
         payload?.fieldErrors,
       );
       // An expired or rejected token is dead; drop it so the UI returns to the lobby.
@@ -154,8 +154,8 @@ export class CasinoApi {
     return this.request('/api/games/blackjack/current');
   }
 
-  spinSlots(bet) {
-    return this.request('/api/games/slots/spin', { method: 'POST', body: { bet } });
+  spinSlots(bet, credits = 1) {
+    return this.request('/api/games/slots/spin', { method: 'POST', body: { bet, credits } });
   }
 
   spinRoulette(bets) {
@@ -172,13 +172,31 @@ export class CasinoApi {
     return this.request('/api/admin/credit', { method: 'POST', body: { targetUid, amount } });
   }
 
-  setLimits(minBet, maxBet) {
-    return this.request('/api/admin/limits', { method: 'POST', body: { minBet, maxBet } });
+  limits() {
+    return this.request('/api/admin/limits');
+  }
+
+  setLimits(game, minBet, maxBet) {
+    return this.request('/api/admin/limits', { method: 'POST', body: { game, minBet, maxBet } });
   }
 
   auditLog(limit = 50) {
     return this.request(`/api/admin/audit?limit=${encodeURIComponent(limit)}`);
   }
+}
+
+/**
+ * What to say when the failure carries no JSON body of its own.
+ *
+ * A rejected origin is the one that matters here: the CORS filter answers with plain text
+ * before the API's own error handling runs, so without this the player is told only that
+ * something went wrong, on a page that is loading and signing in perfectly well from a
+ * different spelling of the same address.
+ */
+function fallbackMessage(status) {
+  if (status === 403) return 'This address is not allowed. Try http://localhost:8081.';
+  if (status === 502 || status === 503 || status === 504) return 'The casino is unavailable.';
+  return 'Something went wrong.';
 }
 
 async function readJson(response) {

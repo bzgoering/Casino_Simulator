@@ -55,12 +55,15 @@ public final class AdminDtos {
     }
 
     /**
-     * Change the house betting limits.
+     * Change one game's betting limits.
      *
      * <p>Both bounds are required: sending one and leaving the other implicit would let a
      * mis-typed minimum sit above an unchanged maximum.
      */
     public record LimitsRequest(
+            @NotNull(message = "A game is required.")
+            com.casino.domain.GameType game,
+
             @NotNull(message = "A minimum bet is required.")
             @DecimalMin(value = "0.01", message = "Minimum bet must be greater than zero.")
             @Digits(integer = 12, fraction = 2, message = "Limits can have at most 2 decimal places.")
@@ -72,11 +75,24 @@ public final class AdminDtos {
             BigDecimal maxBet) {
     }
 
-    /** The limits now in force. */
-    public record LimitsResponse(BigDecimal minBet, BigDecimal maxBet, BigDecimal maxConfigurableBet) {
+    /** One game's accepted wager range. */
+    public record GameLimitsView(BigDecimal minBet, BigDecimal maxBet) {
+    }
+
+    /**
+     * The limits now in force for every game.
+     *
+     * @param games keyed by game name, so the console can render a row per game without
+     *              hard-coding which games exist
+     */
+    public record LimitsResponse(java.util.Map<String, GameLimitsView> games,
+                                 BigDecimal maxConfigurableBet) {
 
         public static LimitsResponse from(AdminService.LimitsResult result) {
-            return new LimitsResponse(result.minBet(), result.maxBet(), result.maxConfigurableBet());
+            var games = new java.util.LinkedHashMap<String, GameLimitsView>();
+            result.games().forEach((game, limits) ->
+                    games.put(game, new GameLimitsView(limits.min(), limits.max())));
+            return new LimitsResponse(games, result.maxConfigurableBet());
         }
     }
 

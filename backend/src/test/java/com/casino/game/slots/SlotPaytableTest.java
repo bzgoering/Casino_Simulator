@@ -143,6 +143,68 @@ class SlotPaytableTest {
         }
     }
 
+    @Test
+    @DisplayName("every payline returns exactly the same 96.005%, so lines do not change the odds")
+    void everyPaylineHasTheSameReturn() {
+        int size = SlotPaytable.REEL_STRIP.size();
+        long expected = totalReturnedAcrossAllOutcomes();
+
+        // Enumerate all 32^3 stop combinations and score each payline across the window they
+        // produce. A line reads one symbol per reel, each a uniform draw over the same strip, so
+        // its return must come out identical to the single-line figure. If a payline were ever
+        // defined to read two rows off one reel, this is where it would show up.
+        for (SlotPayline payline : SlotPayline.values()) {
+            long returned = 0;
+            for (int first = 0; first < size; first++) {
+                List<SlotSymbol> reelA = SlotPaytable.windowAt(first);
+                for (int second = 0; second < size; second++) {
+                    List<SlotSymbol> reelB = SlotPaytable.windowAt(second);
+                    for (int third = 0; third < size; third++) {
+                        List<SlotSymbol> reelC = SlotPaytable.windowAt(third);
+                        returned += SlotPaytable.multiplierFor(
+                                reelA.get(payline.rowOnReel(0)),
+                                reelB.get(payline.rowOnReel(1)),
+                                reelC.get(payline.rowOnReel(2)));
+                    }
+                }
+            }
+
+            assertThat(returned).as("total returned on the %s", payline.displayName())
+                    .isEqualTo(expected);
+            assertThat((double) returned / OUTCOMES)
+                    .as("RTP on the %s", payline.displayName())
+                    .isCloseTo(0.96005, org.assertj.core.data.Offset.offset(0.00005));
+        }
+    }
+
+    @Test
+    @DisplayName("the five paylines are the three rows and the two diagonals, and nothing else")
+    void paylinesAreTheRowsAndDiagonals() {
+        assertThat(SlotPayline.values()).hasSize(5);
+
+        // Straight across: one row read on all three reels.
+        assertThat(SlotPayline.MIDDLE.rows()).containsExactly(1, 1, 1);
+        assertThat(SlotPayline.TOP.rows()).containsExactly(0, 0, 0);
+        assertThat(SlotPayline.BOTTOM.rows()).containsExactly(2, 2, 2);
+        // Diagonal: a different row on every reel.
+        assertThat(SlotPayline.DIAGONAL_DOWN.rows()).containsExactly(0, 1, 2);
+        assertThat(SlotPayline.DIAGONAL_UP.rows()).containsExactly(2, 1, 0);
+
+        for (SlotPayline payline : SlotPayline.values()) {
+            assertThat(payline.rows()).hasSize(SlotPaytable.REEL_COUNT)
+                    .allSatisfy(row -> assertThat(row).isBetween(0, SlotPaytable.ROW_COUNT - 1));
+        }
+    }
+
+    @Test
+    @DisplayName("credits light the centre line first, then the rows, then the diagonals")
+    void creditsLightLinesInCabinetOrder() {
+        assertThat(SlotPayline.litBy(1)).containsExactly(SlotPayline.MIDDLE);
+        assertThat(SlotPayline.litBy(3)).containsExactly(
+                SlotPayline.MIDDLE, SlotPayline.TOP, SlotPayline.BOTTOM);
+        assertThat(SlotPayline.litBy(5)).containsExactlyElementsOf(List.of(SlotPayline.values()));
+    }
+
     private static long totalReturnedAcrossAllOutcomes() {
         long returned = 0;
         for (SlotSymbol a : SlotPaytable.REEL_STRIP) {

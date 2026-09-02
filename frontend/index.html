@@ -134,20 +134,24 @@
         <p class="subtitle" id="slots-rtp"></p>
 
         <div class="slot-machine">
-          <div class="reels" id="slot-reels" aria-live="polite">
-            <div class="reel" data-reel="0"><span>&#127826;</span></div>
-            <div class="reel" data-reel="1"><span>&#127826;</span></div>
-            <div class="reel" data-reel="2"><span>&#127826;</span></div>
+          <div class="glass">
+            <ul class="payline-key" id="payline-key" aria-label="Paylines lit"></ul>
+            <div class="window" id="slot-window" aria-live="polite"></div>
           </div>
           <p class="outcome" id="slots-outcome" role="status" aria-live="polite"></p>
+          <ul class="line-wins" id="slots-line-wins"></ul>
         </div>
 
         <div class="controls">
           <div class="bet-row">
-            <label for="slots-bet">Bet</label>
-            <input id="slots-bet" type="number" min="1" step="1" value="5" />
+            <label for="slots-bet">Bet per line</label>
+            <input id="slots-bet" type="number" min="0.01" step="0.01" value="1.00" />
+            <span class="credit-label" id="credits-label">Credits</span>
+            <div class="credit-row" id="slots-credits" role="group"
+                 aria-labelledby="credits-label"></div>
             <button type="button" class="primary" id="slots-spin">Spin</button>
           </div>
+          <p class="shoe-info" id="slots-stake"></p>
         </div>
 
         <details class="paytable">
@@ -235,16 +239,17 @@
         </form>
 
         <h2>Table limits</h2>
-        <p class="subtitle">The smallest and largest wager accepted on every game. A change binds
-          on the next bet and survives a restart.</p>
+        <p class="subtitle">The smallest and largest wager accepted on each game, set per game.
+          A change binds on that game&rsquo;s next bet and survives a restart.</p>
 
-        <form class="admin-form" id="admin-limits-form">
-          <label for="limits-min">Minimum bet</label>
-          <input id="limits-min" type="number" min="0.01" step="0.01" required />
-          <label for="limits-max">Maximum bet</label>
-          <input id="limits-max" type="number" min="0.01" step="0.01" required />
+        <form class="admin-form limits-form" id="admin-limits-form">
+          <table class="limits-table">
+            <thead>
+              <tr><th>Game</th><th>Minimum bet</th><th>Maximum bet</th><th></th></tr>
+            </thead>
+            <tbody id="limits-body"></tbody>
+          </table>
           <p class="hint" id="limits-ceiling"></p>
-          <button type="submit" class="primary">Save limits</button>
           <p class="form-error" id="limits-error" role="alert"></p>
           <p class="form-success" id="limits-success" role="status"></p>
         </form>

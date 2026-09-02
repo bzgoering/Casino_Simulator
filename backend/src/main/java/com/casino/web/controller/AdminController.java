@@ -60,17 +60,23 @@ public class AdminController {
         return AdminDtos.CreditResponse.from(result);
     }
 
+    /** Every game's betting limits. */
+    @GetMapping("/limits")
+    public AdminDtos.LimitsResponse limits() {
+        return AdminDtos.LimitsResponse.from(adminService.currentLimits());
+    }
+
     /**
-     * Sets the house betting limits, which take effect on the next wager.
+     * Sets one game's betting limits, which take effect on its next wager.
      *
      * <p>Only the pair is settable: how high the maximum may go is fixed in configuration, so an
-     * admin account cannot open the tables to arbitrarily large stakes.
+     * admin account cannot open a table to arbitrarily large stakes.
      */
     @PostMapping("/limits")
     public AdminDtos.LimitsResponse setLimits(@Valid @RequestBody AdminDtos.LimitsRequest request,
                                               HttpServletRequest http) {
-        var result = adminService.updateLimits(CurrentUser.require(), request.minBet(),
-                request.maxBet(), http.getRemoteAddr());
+        var result = adminService.updateLimits(CurrentUser.require(), request.game(),
+                request.minBet(), request.maxBet(), http.getRemoteAddr());
         return AdminDtos.LimitsResponse.from(result);
     }
 

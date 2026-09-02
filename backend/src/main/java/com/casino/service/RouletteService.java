@@ -36,7 +36,7 @@ public class RouletteService {
     @Transactional
     public RouletteRound spin(CasinoPrincipal principal, List<RouletteBet> bets) {
         betValidator.validateRouletteBetCount(bets.size());
-        bets.forEach(bet -> betValidator.validate(bet.amount()));
+        bets.forEach(bet -> betValidator.validate(GameType.ROULETTE, bet.amount()));
 
         BigDecimal total = Money.scaled(bets.stream()
                 .map(RouletteBet::amount)

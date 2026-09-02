@@ -41,8 +41,10 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-casino}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       CASINO_JWT_SECRET: ${CASINO_JWT_SECRET:?set CASINO_JWT_SECRET in .env (32+ bytes)}
-      # nginx serves the browser, so that is the only origin the API needs to accept.
-      CASINO_SECURITY_ALLOWED_ORIGINS: http://localhost:8081
+      # nginx serves the browser, so that is the only port the API needs to accept -- but
+      # both spellings of the loopback address, since a browser treats them as distinct
+      # origins and sends Origin even on a same-origin POST.
+      CASINO_SECURITY_ALLOWED_ORIGINS: ${CASINO_SECURITY_ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
     expose:
       - "8080"
     # Published so you can curl the API directly during development. Remove for a deployment

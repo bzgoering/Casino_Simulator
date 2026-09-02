@@ -1,27 +1,32 @@
 package com.casino.service;
 
 import com.casino.config.CasinoProperties;
-import com.casino.domain.TableLimits;
+import com.casino.domain.GameLimits;
+import com.casino.domain.GameType;
 import com.casino.game.common.Money;
-import com.casino.repository.TableLimitsRepository;
+import com.casino.repository.GameLimitsRepository;
 import com.casino.web.error.CasinoException;
 import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Owns the table limits and enforces them on every wager.
+ * Owns the betting limits and enforces them on every wager.
  *
  * <p>Runs server-side and unconditionally. The browser shows the same limits, but that is a
  * convenience for the player, not a control: the only check that counts is this one.
  *
- * <p>The limits are adjustable by an administrator, so they are held in volatile fields and
- * mirrored to a database row. The row wins at startup when it exists; otherwise the values from
+ * <p>Limits are per game, adjustable by an administrator, held in a concurrent map and mirrored
+ * to a database row per game. A stored row wins at startup; otherwise the values from
  * {@code application.yml} apply, which keeps a fresh database working with no seed step. A hard
- * ceiling stays in configuration, so nothing reachable through the admin console can raise the
+ * ceiling stays in configuration, so nothing reachable through the admin console can raise a
  * maximum bet without a deploy.
  */
 @Component
@@ -29,49 +34,62 @@ public class BetValidator {
 
     private static final Logger log = LoggerFactory.getLogger(BetValidator.class);
 
-    private final TableLimitsRepository store;
+    /**
+     * The table games, whose limits an administrator sets.
+     *
+     * <p>Slots are absent on purpose. A machine is not a table game: it has no house minimum and
+     * its own per-spin ceiling lives in configuration, so putting it in the admin console would
+     * offer a control that does not apply to it.
+     */
+    public static final List<GameType> TABLE_GAMES =
+            List.of(GameType.BLACKJACK, GameType.ROULETTE);
+
+    private final GameLimitsRepository store;
     private final int maxRouletteBets;
-    private final BigDecimal configuredMinBet;
-    private final BigDecimal configuredMaxBet;
     private final BigDecimal ceiling;
+    private final Limits configured;
 
-    private volatile BigDecimal minBet;
-    private volatile BigDecimal maxBet;
+    private final Map<GameType, Limits> limits = new ConcurrentHashMap<>();
 
-    public BetValidator(CasinoProperties properties, TableLimitsRepository store) {
+    public BetValidator(CasinoProperties properties, GameLimitsRepository store) {
         this.store = store;
         this.maxRouletteBets = properties.limits().maxRouletteBets();
-        this.configuredMinBet = Money.of(properties.limits().minBet());
-        this.configuredMaxBet = Money.of(properties.limits().maxBet());
         this.ceiling = Money.of(properties.limits().maxConfigurableBet());
-        this.minBet = configuredMinBet;
-        this.maxBet = configuredMaxBet;
+        this.configured = new Limits(
+                Money.of(properties.limits().minBet()), Money.of(properties.limits().maxBet()));
+        for (GameType game : TABLE_GAMES) {
+            limits.put(game, configured);
+        }
     }
 
     /** Adopts any limits an administrator set in an earlier run. */
     @PostConstruct
     void loadStoredLimits() {
         try {
-            store.findById(TableLimits.SINGLETON_ID).ifPresent(stored -> {
-                minBet = stored.getMinBet();
-                maxBet = stored.getMaxBet();
-                log.info("Table limits loaded from the database: {} to {}", minBet, maxBet);
-            });
+            for (GameLimits stored : store.findAll()) {
+                if (stored.getGame() != null && limits.containsKey(stored.getGame())) {
+                    limits.put(stored.getGame(), new Limits(stored.getMinBet(), stored.getMaxBet()));
+                    log.info("{} limits loaded from the database: {} to {}",
+                            stored.getGame(), stored.getMinBet(), stored.getMaxBet());
+                }
+            }
         } catch (RuntimeException e) {
             // Better to open the tables on the configured limits than not to open at all.
-            log.warn("Could not read stored table limits; using the configured {} to {}",
-                    configuredMinBet, configuredMaxBet, e);
+            log.warn("Could not read stored game limits; using the configured {} to {}",
+                    configured.min(), configured.max(), e);
         }
     }
 
     /**
-     * Replaces the limits and persists them.
+     * Replaces one game's limits and persists them.
      *
      * @param actor the admin username, recorded on the row
      * @throws CasinoException with 400 when the pair is not a usable range
      */
     @Transactional
-    public void updateLimits(BigDecimal requestedMin, BigDecimal requestedMax, String actor) {
+    public Limits updateLimits(GameType game, BigDecimal requestedMin, BigDecimal requestedMax,
+                               String actor) {
+        GameType target = requireTableGame(game);
         BigDecimal min = requireAmount(requestedMin, "minimum");
         BigDecimal max = requireAmount(requestedMax, "maximum");
 
@@ -82,17 +100,25 @@ public class BetValidator {
             throw CasinoException.badRequest("Maximum above " + ceiling + ".");
         }
 
-        TableLimits row = store.findById(TableLimits.SINGLETON_ID).orElse(null);
+        GameLimits row = store.findById(target).orElse(null);
         if (row == null) {
-            row = new TableLimits(min, max, actor);
+            row = new GameLimits(target, min, max, actor);
         } else {
             row.apply(min, max, actor);
         }
         store.save(row);
 
-        this.minBet = min;
-        this.maxBet = max;
-        log.info("Admin {} set table limits to {} - {}", actor, min, max);
+        Limits updated = new Limits(min, max);
+        limits.put(target, updated);
+        log.info("Admin {} set {} limits to {} - {}", actor, target, min, max);
+        return updated;
+    }
+
+    private static GameType requireTableGame(GameType game) {
+        if (game == null || !TABLE_GAMES.contains(game)) {
+            throw CasinoException.badRequest("Not a table game.");
+        }
+        return game;
     }
 
     private BigDecimal requireAmount(BigDecimal amount, String which) {
@@ -109,8 +135,8 @@ public class BetValidator {
         return scaled;
     }
 
-    /** Validates a single stake and returns it normalised to 2dp. */
-    public BigDecimal validate(BigDecimal amount) {
+    /** Validates a stake against one game's limits and returns it normalised to 2dp. */
+    public BigDecimal validate(GameType game, BigDecimal amount) {
         if (amount == null) {
             throw CasinoException.badRequest("Bet amount required.");
         }
@@ -120,13 +146,12 @@ public class BetValidator {
             throw CasinoException.badRequest("Two decimal places max.");
         }
         BigDecimal stake = Money.scaled(amount);
-        BigDecimal min = minBet;
-        BigDecimal max = maxBet;
-        if (stake.compareTo(min) < 0) {
-            throw CasinoException.badRequest("Below " + min + " minimum.");
+        Limits bounds = limitsFor(game);
+        if (stake.compareTo(bounds.min()) < 0) {
+            throw CasinoException.badRequest("Below " + bounds.min() + " minimum.");
         }
-        if (stake.compareTo(max) > 0) {
-            throw CasinoException.badRequest("Above " + max + " maximum.");
+        if (stake.compareTo(bounds.max()) > 0) {
+            throw CasinoException.badRequest("Above " + bounds.max() + " maximum.");
         }
         return stake;
     }
@@ -141,20 +166,30 @@ public class BetValidator {
         }
     }
 
-    public BigDecimal minBet() {
-        return minBet;
+    /** The limits in force for one game. */
+    public Limits limitsFor(GameType game) {
+        return limits.getOrDefault(game, configured);
     }
 
-    public BigDecimal maxBet() {
-        return maxBet;
+    /** Every table game's limits, in a stable order, for the config and admin screens. */
+    public Map<GameType, Limits> all() {
+        Map<GameType, Limits> snapshot = new EnumMap<>(GameType.class);
+        for (GameType game : TABLE_GAMES) {
+            snapshot.put(game, limitsFor(game));
+        }
+        return snapshot;
     }
 
-    /** The highest maximum bet an administrator is allowed to set. */
+    /** The highest maximum bet an administrator is allowed to set, on any game. */
     public BigDecimal maxConfigurableBet() {
         return ceiling;
     }
 
     public int maxRouletteBets() {
         return maxRouletteBets;
+    }
+
+    /** One game's accepted wager range. */
+    public record Limits(BigDecimal min, BigDecimal max) {
     }
 }

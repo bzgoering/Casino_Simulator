@@ -58,10 +58,11 @@ public class GameController {
         return BlackjackResponse.from(blackjack.current(CurrentUser.require()));
     }
 
+    /** Spins the reels with the requested credits lit, each carrying the same bet. */
     @PostMapping("/slots/spin")
-    public SlotsResponse spin(@Valid @RequestBody GameRequests.BetRequest request) {
+    public SlotsResponse spin(@Valid @RequestBody GameRequests.SlotSpinRequest request) {
         CasinoPrincipal principal = CurrentUser.require();
-        return SlotsResponse.from(slots.spin(principal, request.bet()), request.bet());
+        return SlotsResponse.from(slots.spin(principal, request.bet(), request.creditCount()));
     }
 
     /**

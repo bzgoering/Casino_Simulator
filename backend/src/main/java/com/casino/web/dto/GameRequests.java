@@ -17,12 +17,30 @@ public final class GameRequests {
     private GameRequests() {
     }
 
-    /** A wager on slots or an opening blackjack bet. */
-    public record BetRequest(
+    /**
+     * A slot spin.
+     *
+     * <p>No minimum: a machine takes whatever denomination the player dials in, so the only
+     * floor is the cent that two decimal places can express. Credits are the fixed buttons on
+     * the cabinet and are checked against the configured set, not merely bounded here.
+     *
+     * @param bet     the stake on each lit line
+     * @param credits lines to light; absent means one
+     */
+    public record SlotSpinRequest(
             @NotNull(message = "A bet amount is required.")
             @DecimalMin(value = "0.01", message = "Bet must be greater than zero.")
             @Digits(integer = 12, fraction = 2, message = "Bet can have at most 2 decimal places.")
-            BigDecimal bet) {
+            BigDecimal bet,
+
+            @Min(value = 1, message = "Play at least one credit.")
+            @Max(value = 5, message = "Too many credits.")
+            Integer credits) {
+
+        /** Credits requested, defaulting to one when the client does not say. */
+        public int creditCount() {
+            return credits == null ? 1 : credits;
+        }
     }
 
     /**

@@ -73,13 +73,26 @@ casino:
     max-roulette-bets: 20
     max-blackjack-hands: 4
     max-admin-credit: "1000000.00"
+
+  # A slot machine is not a table game: no minimum, and the cap is not admin-managed.
+  slots:
+    # Each credit lights one more payline: 1 the centre row, 3 all three rows, 5 the diagonals
+    # too. No option may exceed the number of paylines.
+    credit-options: [1, 3, 5]
+    max-total-bet: "5000.00"
   security:
     max-failed-logins: 5
     lock-duration: PT15M
     auth-rate-per-minute: 20
     allowed-origins:
+      # 127.0.0.1 and localhost are the same site to a person and different origins to a
+      # browser. Browsers attach an Origin header even to a same-origin POST, so a visitor who
+      # types 127.0.0.1 has every request rejected as an invalid CORS request unless both
+      # spellings are listed.
       - http://localhost:5173
       - http://localhost:8081
+      - http://127.0.0.1:5173
+      - http://127.0.0.1:8081
 
 ---
 # Local development: relaxed origins and verbose game logging.

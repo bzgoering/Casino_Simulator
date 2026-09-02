@@ -12,9 +12,7 @@ import java.util.Map;
  * reads from this endpoint is trusted when a bet comes back.
  */
 public record ConfigResponse(
-        BigDecimal minBet,
-        BigDecimal maxBet,
-        /** The highest maximum bet an administrator may set. */
+        /** The highest maximum bet an administrator may set, on any game. */
         BigDecimal maxConfigurableBet,
         int maxRouletteBets,
         BlackjackInfo blackjack,
@@ -23,6 +21,8 @@ public record ConfigResponse(
 
     /**
      * @param maxHands most boxes one player may take in a single round
+     * @param minBet   smallest accepted wager on this game
+     * @param maxBet   largest accepted wager on this game
      */
     public record BlackjackInfo(
             int decks,
@@ -30,20 +30,40 @@ public record ConfigResponse(
             String blackjackPays,
             int maxSplits,
             boolean doubleAfterSplit,
-            int maxHands) {
+            int maxHands,
+            BigDecimal minBet,
+            BigDecimal maxBet) {
     }
 
     /**
      * @param paytable combination name to payout multiplier
-     * @param rtp      the machine's exact return to player, as a percentage
+     * @param rtp      the machine's exact return to player per line, as a percentage. The figure
+     *                 does not move with the number of lines lit: each line is an independent
+     *                 draw at the same price
      */
-    public record SlotsInfo(List<String> reelStrip, Map<String, Integer> paytable, double rtp) {
+    /**
+     * @param creditOptions the fixed credit buttons; each credit lights one more payline
+     * @param paylines      every line the machine pays on, in the order credits light them
+     * @param maxTotalBet   ceiling on bet-per-line times credits for one spin
+     */
+    public record SlotsInfo(List<String> reelStrip, Map<String, Integer> paytable, double rtp,
+                           List<Integer> creditOptions, List<PaylineInfo> paylines,
+                           BigDecimal maxTotalBet) {
+    }
+
+    /**
+     * One payline.
+     *
+     * @param rows the row this line reads on each reel, top row 0
+     */
+    public record PaylineInfo(String id, String name, List<Integer> rows) {
     }
 
     /**
      * @param pocketOrder the physical wheel sequence, for drawing the wheel
      * @param payouts     bet type to odds-to-one
      */
-    public record RouletteInfo(List<Integer> pocketOrder, Map<String, Integer> payouts, double houseEdgePercent) {
+    public record RouletteInfo(List<Integer> pocketOrder, Map<String, Integer> payouts,
+                              double houseEdgePercent, BigDecimal minBet, BigDecimal maxBet) {
     }
 }

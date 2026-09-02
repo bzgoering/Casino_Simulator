@@ -1,12 +1,15 @@
 package com.casino.web.controller;
 
+import com.casino.domain.GameType;
 import com.casino.game.blackjack.BlackjackRules;
 import com.casino.game.roulette.RouletteBetType;
 import com.casino.game.roulette.RouletteWheel;
+import com.casino.game.slots.SlotPayline;
 import com.casino.game.slots.SlotPaytable;
 import com.casino.game.slots.SlotSymbol;
 import com.casino.service.BetValidator;
 import com.casino.service.BlackjackService;
+import com.casino.service.SlotsService;
 import com.casino.web.dto.ConfigResponse;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,15 +32,19 @@ public class ConfigController {
 
     private final BetValidator betValidator;
     private final BlackjackService blackjack;
+    private final SlotsService slots;
 
-    public ConfigController(BetValidator betValidator, BlackjackService blackjack) {
+    public ConfigController(BetValidator betValidator, BlackjackService blackjack, SlotsService slots) {
         this.betValidator = betValidator;
         this.blackjack = blackjack;
+        this.slots = slots;
     }
 
     @GetMapping
     public ConfigResponse config() {
         BlackjackRules rules = blackjack.rules();
+        var blackjackLimits = betValidator.limitsFor(GameType.BLACKJACK);
+        var rouletteLimits = betValidator.limitsFor(GameType.ROULETTE);
 
         var blackjackInfo = new ConfigResponse.BlackjackInfo(
                 rules.deckCount(),
@@ -45,12 +52,20 @@ public class ConfigController {
                 rules.blackjackPayout() == 1.5 ? "3:2" : rules.blackjackPayout() + "x",
                 rules.maxSplits(),
                 rules.doubleAfterSplit(),
-                blackjack.maxHands());
+                blackjack.maxHands(),
+                blackjackLimits.min(),
+                blackjackLimits.max());
 
         var slotsInfo = new ConfigResponse.SlotsInfo(
                 SlotPaytable.REEL_STRIP.stream().map(Enum::name).toList(),
                 paytableSummary(),
-                computeSlotRtp());
+                computeSlotRtp(),
+                slots.creditOptions(),
+                java.util.Arrays.stream(SlotPayline.values())
+                        .map(line -> new ConfigResponse.PaylineInfo(
+                                line.name(), line.displayName(), line.rows()))
+                        .toList(),
+                slots.maxTotalBet());
 
         Map<String, Integer> roulettePayouts = new LinkedHashMap<>();
         for (RouletteBetType type : RouletteBetType.values()) {
@@ -59,11 +74,11 @@ public class ConfigController {
         var rouletteInfo = new ConfigResponse.RouletteInfo(
                 RouletteWheel.POCKET_ORDER,
                 roulettePayouts,
-                100.0 / RouletteWheel.POCKET_COUNT);
+                100.0 / RouletteWheel.POCKET_COUNT,
+                rouletteLimits.min(),
+                rouletteLimits.max());
 
         return new ConfigResponse(
-                betValidator.minBet(),
-                betValidator.maxBet(),
                 betValidator.maxConfigurableBet(),
                 betValidator.maxRouletteBets(),
                 blackjackInfo,

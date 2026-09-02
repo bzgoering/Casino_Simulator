@@ -41,6 +41,13 @@ casino:
     max-roulette-bets: 20
     max-blackjack-hands: 4
     max-admin-credit: "1000000.00"
+
+  # A slot machine is not a table game: no minimum, and the cap is not admin-managed.
+  slots:
+    # Each credit lights one more payline: 1 the centre row, 3 all three rows, 5 the diagonals
+    # too. No option may exceed the number of paylines.
+    credit-options: [1, 3, 5]
+    max-total-bet: "5000.00"
   security:
     max-failed-logins: 5
     lock-duration: PT15M

@@ -38,40 +38,83 @@ class GameApiTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("the reported symbols match the reported reel stops")
-        void symbolsMatchStops() throws Exception {
+        @DisplayName("the whole three-by-three window comes back, not just the paid lines")
+        void windowMatchesStops() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode result = perform(postJson("/api/games/slots/spin", """
+                    {"bet": 1.00, "credits": 1}
+                    """, token));
+
+            assertThat(result.get("stops")).hasSize(3);
+            assertThat(result.get("window")).hasSize(3);
+            result.get("window").forEach(reel -> assertThat(reel).hasSize(3));
+            // One credit buys the centre line, so only that line is scored.
+            assertThat(result.get("lines")).hasSize(1);
+            assertThat(result.get("lines").get(0).get("payline").asText()).isEqualTo("MIDDLE");
+            assertThat(result.get("totalMultiplier").asInt()).isNotNegative();
+        }
+
+        @Test
+        @DisplayName("credits light more lines and cost the bet for each")
+        void creditsBuyLines() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode result = perform(postJson("/api/games/slots/spin", """
+                    {"bet": 2.00, "credits": 5}
+                    """, token));
+
+            assertThat(result.get("credits").asInt()).isEqualTo(5);
+            assertThat(result.get("betPerLine").decimalValue()).isEqualByComparingTo("2.00");
+            assertThat(result.get("totalStaked").decimalValue()).isEqualByComparingTo("10.00");
+            assertThat(result.get("lines")).hasSize(5);
+
+            // The payout is the lines added up, each on the per-line bet.
+            BigDecimal lineTotal = BigDecimal.ZERO;
+            for (JsonNode line : result.get("lines")) {
+                lineTotal = lineTotal.add(line.get("payout").decimalValue());
+            }
+            assertThat(result.get("payout").decimalValue()).isEqualByComparingTo(lineTotal);
+            assertThat(result.get("net").decimalValue())
+                    .isEqualByComparingTo(lineTotal.subtract(new BigDecimal("10.00")));
+        }
+
+        @Test
+        @DisplayName("the machine has no minimum: a one-cent bet plays")
+        void thereIsNoMinimumBet() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode result = perform(postJson("/api/games/slots/spin", """
+                    {"bet": 0.01, "credits": 3}
+                    """, token));
+
+            assertThat(result.get("totalStaked").decimalValue()).isEqualByComparingTo("0.03");
+            assertThat(result.get("lines")).hasSize(3);
+        }
+
+        @Test
+        @DisplayName("a credit count that is not a button on the cabinet is refused")
+        void unlistedCreditCountRefused() throws Exception {
+            String token = token(guestSession());
+
+            mvc.perform(postJson("/api/games/slots/spin", """
+                            {"bet": 1.00, "credits": 2}
+                            """, token))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("Credits must be 1, 3 or 5."));
+        }
+
+        @Test
+        @DisplayName("omitting the credits plays a single line")
+        void creditsDefaultToOne() throws Exception {
             String token = token(guestSession());
 
             JsonNode result = perform(postJson("/api/games/slots/spin", """
                     {"bet": 1.00}
                     """, token));
 
-            assertThat(result.get("stops")).hasSize(3);
-            assertThat(result.get("symbols")).hasSize(3);
-            assertThat(result.get("multiplier").asInt()).isNotNegative();
-        }
-
-        @Test
-        @DisplayName("a bet over the table maximum is refused")
-        void betAboveMaximumRefused() throws Exception {
-            String token = token(guestSession());
-
-            mvc.perform(postJson("/api/games/slots/spin", """
-                            {"bet": 99999.00}
-                            """, token))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.message").value("Above 5000.00 maximum."));
-        }
-
-        @Test
-        @DisplayName("a bet under the table minimum is refused")
-        void betBelowMinimumRefused() throws Exception {
-            String token = token(guestSession());
-
-            mvc.perform(postJson("/api/games/slots/spin", """
-                            {"bet": 0.50}
-                            """, token))
-                    .andExpect(status().isBadRequest());
+            assertThat(result.get("credits").asInt()).isEqualTo(1);
+            assertThat(result.get("totalStaked").decimalValue()).isEqualByComparingTo("1.00");
         }
 
         @Test

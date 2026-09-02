@@ -2,29 +2,31 @@ package com.casino.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * The house betting limits, as an administrator last set them.
+ * The betting limits for one game, as an administrator last set them.
  *
- * <p>Exactly one row, keyed by a fixed id. Storing them makes a limit change survive a restart;
- * keeping them in a table rather than in configuration is what lets an admin change them without
- * a redeploy. The row only exists once someone has changed the limits: until then the values in
- * {@code application.yml} apply.
+ * <p>One row per game: blackjack, slots and roulette are different products, and a single pair
+ * of bounds for the whole house forces the same floor on a slot spin as on a blackjack box.
+ * Storing them makes a change survive a restart; keeping them in a table rather than in
+ * configuration is what lets an admin change them without a redeploy.
+ *
+ * <p>A game with no row falls back to the values in {@code application.yml}.
  */
 @Entity
-@Table(name = "table_limits")
-public class TableLimits {
-
-    /** The one and only row. */
-    public static final short SINGLETON_ID = 1;
+@Table(name = "game_limits")
+public class GameLimits {
 
     @Id
-    @Column(name = "id", nullable = false)
-    private Short id = SINGLETON_ID;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "game", nullable = false, updatable = false, length = 16)
+    private GameType game;
 
     @Column(name = "min_bet", nullable = false, precision = 19, scale = 2)
     private BigDecimal minBet;
@@ -35,15 +37,15 @@ public class TableLimits {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    /** The admin who last changed the limits, kept alongside the fuller admin audit trail. */
+    /** The admin who last changed them, kept alongside the fuller admin audit trail. */
     @Column(name = "updated_by", length = 32)
     private String updatedBy;
 
-    protected TableLimits() {
+    protected GameLimits() {
     }
 
-    public TableLimits(BigDecimal minBet, BigDecimal maxBet, String updatedBy) {
-        this.id = SINGLETON_ID;
+    public GameLimits(GameType game, BigDecimal minBet, BigDecimal maxBet, String updatedBy) {
+        this.game = game;
         apply(minBet, maxBet, updatedBy);
     }
 
@@ -52,6 +54,10 @@ public class TableLimits {
         this.maxBet = maxBet;
         this.updatedBy = updatedBy;
         this.updatedAt = Instant.now();
+    }
+
+    public GameType getGame() {
+        return game;
     }
 
     public BigDecimal getMinBet() {

@@ -213,7 +213,10 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
     setText(qs('#blackjack-rules'),
       `${bj.decks} decks \u00b7 blackjack pays ${bj.blackjackPays} \u00b7 `
       + `dealer ${bj.dealerHitsSoft17 ? 'hits' : 'stands on'} soft 17 \u00b7 `
-      + `split up to ${bj.maxSplits} times`);
+      + `split up to ${bj.maxSplits} times, up to ${bj.maxHands} hands`);
+    // Follow the table rather than the value hard-coded in the markup.
+    handsInput.max = String(bj.maxHands);
+    showStake();
   }
 
   return { resume, describeRules };

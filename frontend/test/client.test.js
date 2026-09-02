@@ -135,9 +135,10 @@ describe('CasinoApi', () => {
       ok: false, status: 502, text: async () => '<html>Bad Gateway</html>',
     });
 
+    // A bad gateway means the backend is down, not that the request was bad.
     await expect(api.config()).rejects.toMatchObject({
       status: 502,
-      message: 'Something went wrong.',
+      message: 'The casino is unavailable.',
     });
   });
 
@@ -161,6 +162,10 @@ describe('CasinoApi', () => {
     await api.dealBlackjack(25, 4);
     expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ bet: 25, hands: 4 });
 
+    await api.spinSlots(0.25, 5);
+    expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/games/slots/spin');
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ bet: 0.25, credits: 5 });
+
     await api.spinRoulette([{ type: 'COLOR', selection: 'RED', amount: 5 }]);
     expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/games/roulette/spin');
   });
@@ -177,5 +182,45 @@ describe('CasinoApi', () => {
     expect(resilient.isSignedIn).toBe(false);
     expect(() => resilient.setSession(PLAYER_SESSION)).not.toThrow();
     expect(resilient.isSignedIn).toBe(true);
+  });
+});
+
+describe('errors without a JSON body', () => {
+  it('names a rejected origin rather than blaming the request', async () => {
+    // Spring's CORS filter answers 403 with plain text, before the API's own error shape.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => 'Invalid CORS request',
+    });
+    const api = new CasinoApi({ fetchImpl: fetchMock, storage: null });
+
+    await expect(api.me()).rejects.toThrow(/address is not allowed/i);
+  });
+
+  it('falls back to the generic message for anything else', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 418,
+      text: async () => '',
+    });
+    const api = new CasinoApi({ fetchImpl: fetchMock, storage: null });
+
+    await expect(api.me()).rejects.toThrow('Something went wrong.');
+  });
+});
+
+describe('admin limits', () => {
+  it('sends the game alongside the bounds', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200, text: async () => JSON.stringify({ games: {} }),
+    });
+    const api = new CasinoApi({ fetchImpl: fetchMock, storage: null });
+
+    await api.setLimits('ROULETTE', 2, 500);
+
+    expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/admin/limits');
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body))
+      .toEqual({ game: 'ROULETTE', minBet: 2, maxBet: 500 });
   });
 });

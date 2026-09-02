@@ -48,7 +48,7 @@ npm run dev        # http://localhost:5173, proxies /api to :8080
 | Gets a UID | session id | UUID at sign-up | UUID at sign-up |
 | History kept | no | yes | yes |
 | Can credit balances | no | no | **yes** |
-| Can set table limits | no | no | **yes** |
+| Can set table limits | no | no | **yes** (per table game) |
 
 **Guests leave no trace.** This is enforced by architecture rather than policy: a guest balance
 lives in an in-memory session with a 2-hour idle TTL and never touches SQL. The trade-off is that
@@ -104,18 +104,42 @@ The hole card is genuinely absent from the JSON until the reveal, not merely hid
 
 ### Slots
 
-Three reels, one payline, 32 stops per reel. That gives exactly 32,768 equally likely
-combinations, so the return to player is a computed figure rather than an estimate:
+Three reels showing three rows, 32 stops per reel, five paylines: the three straight-across rows
+and both diagonals. The window on each reel is the stop that landed with its neighbour either
+side, and the strip is a loop, so the window wraps at the ends exactly as the physical reel does.
+
+**A slot machine is not a table game**, and it is deliberately not covered by the admin-managed
+table limits. There is no house minimum: the player dials in whatever denomination they like,
+down to a cent, and buys a fixed number of credits. Each credit lights one more payline, in the
+order a real cabinet lights them:
+
+| Credits | Lines lit |
+|---|---|
+| 1 | centre row |
+| 3 | all three rows |
+| 5 | the rows and both diagonals |
+
+The bet is charged per lit line, so five credits at $0.25 costs $1.25 and each line is scored on
+its own. Only lit lines pay, but the **whole window is returned** and drawn, so a near miss on a
+diagonal that was not bought is visible exactly as it would be on real glass. The only bound is a
+per-spin ceiling in `application.yml`, which is not reachable from the admin console.
 
 | | |
 |---|---|
-| **Return to player** | **96.005%** (house edge 3.995%) |
-| **Hit frequency** | 22.4% |
+| **Return to player** | **96.005% per line** (house edge 3.995%) |
+| **Hit frequency** | 22.4% per line |
 | Top jackpot | 200x (three sevens, 1 in 32,768) |
 
-`SlotPaytableTest` enumerates the entire outcome space and asserts the RTP, so changing a reel
-strip or a payout without recalculating fails the build. `/api/config` computes the same figure
-at request time, so the advertised paytable cannot drift from what the machine actually pays.
+**Lines do not change the odds.** Every payline reads one symbol per reel, each a uniform draw
+over the same strip and independent across reels, so every line has exactly the distribution the
+old single-line machine had. Expectation adds, so the return is 96.005% whether the player lights
+one line or five: more lines buy more chances at the same price per chance, not a better or worse
+machine. `SlotPaytableTest` proves this the hard way, enumerating all 32,768 stop combinations
+**for each of the five paylines** and asserting every one returns the identical figure. A payline
+defined to read two rows off one reel would break that equality and fail the build.
+
+`/api/config` computes the same RTP at request time, so the advertised paytable cannot drift from
+what the machine actually pays.
 
 ### Roulette
 
@@ -211,18 +235,18 @@ stolen token stays valid until it expires.
 ## Tests
 
 ```bash
-cd backend  && ./mvnw test      # 153 tests
-cd frontend && npm test         # 61 tests
+cd backend  && ./mvnw test      # 166 tests
+cd frontend && npm test         # 74 tests
 ```
 
-**Backend (153)** covers engine rules against scripted decks (naturals, splits, split aces,
+**Backend (166)** covers engine rules against scripted decks (naturals, splits, split aces,
 doubling, dealer draw rules, bust handling, multi-box dealing order and settlement), exhaustive
-RTP and house-edge verification, and full HTTP-level integration tests on H2 spanning auth, the
+per-payline RTP and house-edge verification, and full HTTP-level integration tests on H2 spanning auth, the
 games, the authorisation boundary and the admin flows including limit changes.
 
-**Frontend (61)** covers money formatting and bet validation, card parsing, the client-side
-roulette geometry including the forged-bet cases the server also rejects, the rendered roulette
-cloth under jsdom, and the API client's session, error and network handling against a mocked
+**Frontend (74)** covers money formatting and bet validation, card parsing, the client-side
+roulette geometry including the forged-bet cases the server also rejects, the rendered roulette cloth and slot
+machine under jsdom, and the API client's session, error and network handling against a mocked
 `fetch`.
 
 Two real bugs were found and fixed by these tests during development:
@@ -235,6 +259,11 @@ Two real bugs were found and fixed by these tests during development:
    one highlighted all twelve and only column 1 was ever really bettable. The layout functions
    were correct throughout; the fault was in how the cloth was drawn, which is why the cloth is
    now tested through the DOM and not only through its geometry.
+4. The CORS allow-list held only `http://localhost:8081`, and a browser sends an `Origin` header
+   even on a same-origin POST. Anyone who reached the site as `127.0.0.1:8081` therefore had
+   every request answered `403 Invalid CORS request`, which surfaced in the UI as the useless
+   "Something went wrong." Both spellings of the loopback address are now allowed, and an error
+   with no JSON body of its own no longer collapses into the generic message.
 
 ---
 
@@ -251,11 +280,12 @@ Two real bugs were found and fixed by these tests during development:
 | POST | `/api/games/blackjack/deal` | any | Start a round on 1-4 boxes |
 | POST | `/api/games/blackjack/action` | any | HIT / STAND / DOUBLE / SPLIT |
 | GET | `/api/games/blackjack/current` | any | Reconnect to a hand in progress |
-| POST | `/api/games/slots/spin` | any | Spin the reels |
+| POST | `/api/games/slots/spin` | any | Spin the reels with `credits` lines lit |
 | POST | `/api/games/roulette/spin` | any | Spin against every chip placed |
 | POST | `/api/admin/credit` | admin | Credit any account or guest session by UID |
 | POST | `/api/admin/credit/self` | admin | Credit your own balance |
-| POST | `/api/admin/limits` | admin | Set the minimum and maximum bet |
+| GET | `/api/admin/limits` | admin | Every game's minimum and maximum bet |
+| POST | `/api/admin/limits` | admin | Set one game's minimum and maximum bet |
 | GET | `/api/admin/audit` | admin | Privileged-action audit log |
 
 "any" means any authenticated caller, guests included, since guests hold a real token too.
@@ -280,14 +310,22 @@ Set through the environment; see `.env.example`.
 | `CASINO_JWT_SECRET` | *(none)* | HS256 key, 32+ bytes. **Required** outside the dev profile |
 | `POSTGRES_PASSWORD` | *(none)* | Database password. Required |
 | `SPRING_PROFILES_ACTIVE` | `prod` | `dev` adds verbose logging and an ephemeral JWT key |
-| `CASINO_SECURITY_ALLOWED_ORIGINS` | localhost:5173, localhost:8081 | CORS allow-list |
+| `CASINO_SECURITY_ALLOWED_ORIGINS` | localhost + 127.0.0.1 on :8081 | CORS allow-list. A browser sends `Origin` even same-origin, so every hostname the site is reached by must be listed |
 
 The guest TTL, the lockout policy and the opening table limits live under `casino:` in
 `backend/src/main/resources/application.yml`.
 
-The minimum and maximum bet are adjustable at runtime from the admin console, which persists them
-to a single-row `table_limits` table so a change survives a restart. Until an admin sets them the
-configured values apply, so a fresh database needs no seed step. How high the maximum may go is
-fixed by `casino.limits.max-configurable-bet` and is deliberately *not* reachable from the
-console: an admin account should not be able to open the tables to arbitrary stakes without a
-deploy. Every change is written to `admin_audit` alongside the credits.
+The minimum and maximum bet are adjustable at runtime from the admin console **per table game**,
+and persisted to a `game_limits` row per game so a change survives a restart. Blackjack and
+roulette are different products with different economics, and one house-wide pair forced the same
+floor on both; each is now set on its own and binds only on that game. A game with no stored row
+falls back to the configured values, so a fresh database needs no seed step.
+
+Slots are absent from that console on purpose: a machine is not a table game, has no house
+minimum, and carries its own per-spin ceiling under `casino.slots` instead. `POST
+/api/admin/limits` rejects `SLOTS` outright rather than accepting a setting nothing would read.
+
+How high any maximum may go is fixed by `casino.limits.max-configurable-bet` and is deliberately
+*not* reachable from the console: an admin account should not be able to open the tables to
+arbitrary stakes without a deploy. Every change is written to `admin_audit` alongside the
+credits.

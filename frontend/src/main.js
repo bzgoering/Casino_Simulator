@@ -12,12 +12,23 @@ const VIEWS = ['lobby', 'floor', 'blackjack', 'slots', 'roulette', 'history', 'a
 
 let tableConfig = null;
 
-/** Limits and the live balance, handed to each game view so it can pre-validate a bet. */
-function currentConfig() {
+// Slots are absent: a machine is not a table game and carries no admin-managed limits.
+const GAME_KEYS = { BLACKJACK: 'blackjack', ROULETTE: 'roulette' };
+
+/**
+ * Limits and the live balance, handed to each game view so it can pre-validate a bet.
+ *
+ * Limits are per game, so a view is given its own game's bounds rather than one house-wide
+ * pair. `game` is the view asking; without it every view would have to know where in the
+ * config its own limits live.
+ */
+function currentConfig(game) {
   const { balance } = session.get();
+  const limits = game ? tableConfig?.[GAME_KEYS[game]] : undefined;
   return {
-    minBet: tableConfig ? Number(tableConfig.minBet) : undefined,
-    maxBet: tableConfig ? Number(tableConfig.maxBet) : undefined,
+    game,
+    minBet: limits ? Number(limits.minBet) : undefined,
+    maxBet: limits ? Number(limits.maxBet) : undefined,
     maxRouletteBets: tableConfig?.maxRouletteBets,
     balance: balance === null || balance === undefined ? undefined : Number(balance),
     blackjack: tableConfig?.blackjack,
@@ -28,14 +39,13 @@ function currentConfig() {
 
 const shared = {
   api,
-  config: currentConfig,
   onBalance: (balance) => session.set({ balance }),
   onError: (message) => toast(message, 'error'),
 };
 
-const blackjack = createBlackjackView(shared);
-const slots = createSlotsView(shared);
-const roulette = createRouletteView(shared);
+const blackjack = createBlackjackView({ ...shared, config: () => currentConfig('BLACKJACK') });
+const slots = createSlotsView({ ...shared, config: () => currentConfig('SLOTS') });
+const roulette = createRouletteView({ ...shared, config: () => currentConfig('ROULETTE') });
 
 // ---------------------------------------------------------------- navigation
 
@@ -158,6 +168,18 @@ async function loadConfig() {
   }
 }
 
+/** Each game's own range, since the limits are no longer house-wide. */
+function gameLimitsSummary() {
+  const tables = [['Blackjack', tableConfig?.blackjack], ['Roulette', tableConfig?.roulette]]
+    .filter(([, cfg]) => cfg)
+    .map(([name, cfg]) => `${name} ${formatMoney(cfg.minBet)}-${formatMoney(cfg.maxBet)}`);
+  // The machine has no minimum, so quoting it a range would misdescribe it.
+  if (tableConfig?.slots) {
+    tables.push(`Slots any stake up to ${formatMoney(tableConfig.slots.maxTotalBet)} a spin`);
+  }
+  return tables.join(', ');
+}
+
 function renderFloor() {
   const { identity } = session.get();
   setText(qs('#floor-greeting'), identity?.role === 'GUEST'
@@ -173,7 +195,7 @@ function renderFloor() {
   const panel = qs('#odds-panel');
   clear(panel);
   panel.append(el('p', {
-    text: `Table limits: ${formatMoney(tableConfig.minBet)} to ${formatMoney(tableConfig.maxBet)} `
+    text: `Table limits ${gameLimitsSummary()} `
       + `\u00b7 up to ${tableConfig.maxRouletteBets} bets per roulette spin.`,
   }));
   panel.append(el('p', {
@@ -278,38 +300,80 @@ qs('#admin-credit-form').addEventListener('submit', async (event) => {
   }
 });
 
-/** Fills the limits form with what is currently in force. */
+/** The table games, the only ones whose limits an admin sets. */
+const LIMIT_GAMES = [
+  ['BLACKJACK', 'Blackjack'],
+  ['ROULETTE', 'Roulette'],
+];
+
+/**
+ * One row per game, each saved on its own.
+ *
+ * Saving per row rather than all at once keeps a rejected value from silently discarding the
+ * other games' edits: the row that failed reports why and the rest are untouched.
+ */
 function renderLimitsForm() {
   if (!tableConfig) return;
-  qs('#limits-min').value = Number(tableConfig.minBet).toFixed(2);
-  qs('#limits-max').value = Number(tableConfig.maxBet).toFixed(2);
-  qs('#limits-max').max = String(tableConfig.maxConfigurableBet);
+  const body = qs('#limits-body');
+  clear(body);
+
+  for (const [game, label] of LIMIT_GAMES) {
+    const cfg = tableConfig[GAME_KEYS[game]];
+    if (!cfg) continue;
+
+    const min = el('input', {
+      attrs: {
+        type: 'number', min: '0.01', step: '0.01', required: 'required',
+        value: Number(cfg.minBet).toFixed(2), 'aria-label': `${label} minimum bet`,
+      },
+    });
+    const max = el('input', {
+      attrs: {
+        type: 'number', min: '0.01', step: '0.01', required: 'required',
+        max: String(tableConfig.maxConfigurableBet),
+        value: Number(cfg.maxBet).toFixed(2), 'aria-label': `${label} maximum bet`,
+      },
+    });
+    const save = el('button', {
+      className: 'primary',
+      text: 'Save',
+      attrs: { type: 'button', 'data-game': game },
+    });
+    save.addEventListener('click', () => saveLimits(game, label, min.value, max.value));
+
+    body.append(el('tr', {
+      children: [
+        el('th', { text: label, attrs: { scope: 'row' } }),
+        el('td', { children: [min] }),
+        el('td', { children: [max] }),
+        el('td', { children: [save] }),
+      ],
+    }));
+  }
+
   setText(qs('#limits-ceiling'),
-    `The maximum cannot be raised past ${formatMoney(tableConfig.maxConfigurableBet)}, `
+    `No maximum may be raised past ${formatMoney(tableConfig.maxConfigurableBet)}, `
     + 'which is fixed in configuration.');
 }
 
-qs('#admin-limits-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
+async function saveLimits(game, label, minValue, maxValue) {
   setText(qs('#limits-error'), '');
   setText(qs('#limits-success'), '');
 
-  const minBet = Number.parseFloat(qs('#limits-min').value);
-  const maxBet = Number.parseFloat(qs('#limits-max').value);
-
   try {
-    const result = await api.setLimits(minBet, maxBet);
+    const result = await api.setLimits(game, Number.parseFloat(minValue), Number.parseFloat(maxValue));
+    const saved = result.games[game];
     setText(qs('#limits-success'),
-      `Table limits are now ${formatMoney(result.minBet)} to ${formatMoney(result.maxBet)}.`);
+      `${label} limits are now ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}.`);
 
     // Every bet form validates against these, so refresh what the rest of the UI believes.
     await loadConfig();
     renderLimitsForm();
     await loadAudit();
   } catch (error) {
-    setText(qs('#limits-error'), error.message);
+    setText(qs('#limits-error'), `${label}: ${error.message}`);
   }
-});
+}
 
 async function loadAudit() {
   const body = qs('#audit-body');

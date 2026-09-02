@@ -174,40 +174,83 @@ class AdminApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("an admin can change the table limits, and the new ones bind immediately")
-    void adminCanChangeTableLimits() throws Exception {
+    @DisplayName("an admin can change one game's limits, and they bind on that game only")
+    void adminCanChangeOneGamesLimits() throws Exception {
         JsonNode admin = adminSession("admin_limits", "correct-horse-9");
         JsonNode player = signUp("limits_player", "correct-horse-9");
 
         try {
             JsonNode limits = perform(postJson("/api/admin/limits", """
-                    {"minBet": 5.00, "maxBet": 50.00}
+                    {"game":"ROULETTE","minBet": 5.00, "maxBet": 50.00}
                     """, token(admin)));
 
-            assertThat(limits.get("minBet").decimalValue()).isEqualByComparingTo("5.00");
-            assertThat(limits.get("maxBet").decimalValue()).isEqualByComparingTo("50.00");
+            assertThat(limits.get("games").get("ROULETTE").get("minBet").decimalValue())
+                    .isEqualByComparingTo("5.00");
+            assertThat(limits.get("games").get("ROULETTE").get("maxBet").decimalValue())
+                    .isEqualByComparingTo("50.00");
+            // Blackjack is untouched by a change to the roulette table.
+            assertThat(limits.get("games").get("BLACKJACK").get("minBet").decimalValue())
+                    .isEqualByComparingTo("1.00");
 
-            // The public config reports what is actually enforced.
+            // The public config reports what is actually enforced, per game.
             JsonNode config = perform(get("/api/config"));
-            assertThat(config.get("minBet").decimalValue()).isEqualByComparingTo("5.00");
+            assertThat(config.get("roulette").get("minBet").decimalValue()).isEqualByComparingTo("5.00");
+            assertThat(config.get("blackjack").get("minBet").decimalValue()).isEqualByComparingTo("1.00");
 
-            mvc.perform(postJson("/api/games/slots/spin", """
-                            {"bet": 2.00}
+            mvc.perform(postJson("/api/games/roulette/spin", """
+                            {"bets":[{"type":"COLOR","selection":"RED","amount":2.00}]}
                             """, token(player)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("Below 5.00 minimum."));
 
-            mvc.perform(postJson("/api/games/slots/spin", """
-                            {"bet": 80.00}
+            mvc.perform(postJson("/api/games/roulette/spin", """
+                            {"bets":[{"type":"COLOR","selection":"RED","amount":80.00}]}
                             """, token(player)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("Above 50.00 maximum."));
+
+            // The same stake is still fine at the blackjack table.
+            mvc.perform(postJson("/api/games/blackjack/deal", """
+                            {"bet": 2.00}
+                            """, token(player)))
+                    .andExpect(status().isOk());
+
+            // And the slot machine is not governed by these limits at all.
+            mvc.perform(postJson("/api/games/slots/spin", """
+                            {"bet": 0.05, "credits": 1}
+                            """, token(player)))
+                    .andExpect(status().isOk());
         } finally {
             // The validator holds the limits outside the transaction, so put them back.
             perform(postJson("/api/admin/limits", """
-                    {"minBet": 1.00, "maxBet": 5000.00}
+                    {"game":"ROULETTE","minBet": 1.00, "maxBet": 5000.00}
                     """, token(admin)));
         }
+    }
+
+    @Test
+    @DisplayName("only the table games appear in the limits, since slots are not a table game")
+    void limitsCoverTableGamesOnly() throws Exception {
+        JsonNode admin = adminSession("admin_read_limits", "correct-horse-9");
+
+        JsonNode limits = perform(getAs("/api/admin/limits", token(admin)));
+
+        assertThat(limits.get("games").has("BLACKJACK")).isTrue();
+        assertThat(limits.get("games").has("ROULETTE")).isTrue();
+        assertThat(limits.get("games").has("SLOTS")).isFalse();
+        assertThat(limits.get("maxConfigurableBet").decimalValue()).isPositive();
+    }
+
+    @Test
+    @DisplayName("slot limits cannot be set at all: a machine is not a table game")
+    void slotLimitsAreRefused() throws Exception {
+        JsonNode admin = adminSession("admin_slots_limits", "correct-horse-9");
+
+        mvc.perform(postJson("/api/admin/limits", """
+                        {"game":"SLOTS","minBet": 5.00, "maxBet": 50.00}
+                        """, token(admin)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Not a table game."));
     }
 
     @Test
@@ -216,7 +259,7 @@ class AdminApiTest extends ApiTestSupport {
         JsonNode admin = adminSession("admin_inverted", "correct-horse-9");
 
         mvc.perform(postJson("/api/admin/limits", """
-                        {"minBet": 100.00, "maxBet": 10.00}
+                        {"game":"ROULETTE","minBet": 100.00, "maxBet": 10.00}
                         """, token(admin)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Maximum below minimum."));
@@ -228,18 +271,30 @@ class AdminApiTest extends ApiTestSupport {
         JsonNode admin = adminSession("admin_ceiling", "correct-horse-9");
 
         mvc.perform(postJson("/api/admin/limits", """
-                        {"minBet": 1.00, "maxBet": 99999999.00}
+                        {"game":"BLACKJACK","minBet": 1.00, "maxBet": 99999999.00}
                         """, token(admin)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @DisplayName("a player cannot change the table limits")
+    @DisplayName("limits cannot be set on something that is not a game at all")
+    void limitsRejectNonGames() throws Exception {
+        JsonNode admin = adminSession("admin_nongame", "correct-horse-9");
+
+        mvc.perform(postJson("/api/admin/limits", """
+                        {"game":"ACCOUNT","minBet": 1.00, "maxBet": 10.00}
+                        """, token(admin)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Not a table game."));
+    }
+
+    @Test
+    @DisplayName("a player cannot change any game's limits")
     void playerCannotChangeTableLimits() throws Exception {
         JsonNode player = signUp("nosy_player", "correct-horse-9");
 
         mvc.perform(postJson("/api/admin/limits", """
-                        {"minBet": 0.01, "maxBet": 999999.00}
+                        {"game":"SLOTS","minBet": 0.01, "maxBet": 999999.00}
                         """, token(player)))
                 .andExpect(status().isForbidden());
     }
