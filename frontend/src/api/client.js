@@ -132,6 +132,16 @@ export class CasinoApi {
     return this.request('/api/me');
   }
 
+  changePassword(currentPassword, newPassword) {
+    return this.request('/api/me/password', {
+      method: 'POST', body: { currentPassword, newPassword },
+    });
+  }
+
+  deleteAccount(password) {
+    return this.request('/api/me/delete', { method: 'POST', body: { password } });
+  }
+
   history(limit = 25) {
     return this.request(`/api/me/history?limit=${encodeURIComponent(limit)}`);
   }

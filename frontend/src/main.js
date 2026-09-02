@@ -8,7 +8,7 @@ import { createRouletteView } from './games/roulette.js';
 
 const api = new CasinoApi();
 
-const VIEWS = ['lobby', 'floor', 'blackjack', 'slots', 'roulette', 'history', 'admin'];
+const VIEWS = ['lobby', 'floor', 'blackjack', 'slots', 'roulette', 'history', 'account', 'admin'];
 
 let tableConfig = null;
 
@@ -60,6 +60,7 @@ function showView(name) {
 
   if (name === 'blackjack') blackjack.resume();
   if (name === 'history') loadHistory();
+  if (name === 'account') renderAccount();
   if (name === 'admin') {
     renderLimitsForm();
     loadAudit();
@@ -156,9 +157,22 @@ session.subscribe(({ identity, balance }) => {
   show(qs('#nav-history'), identity?.role !== 'GUEST');
 });
 
+/** States the password rule wherever a password is chosen, from the one server-side figure. */
+function applyPasswordPolicy() {
+  const min = tableConfig?.passwordMinLength;
+  if (!min) return;
+  for (const field of qsa('#signup-password, #new-password')) {
+    field.minLength = min;
+  }
+  for (const node of qsa('.pw-rule')) {
+    setText(node, `At least ${min} characters.`);
+  }
+}
+
 async function loadConfig() {
   try {
     tableConfig = await api.config();
+    applyPasswordPolicy();
     blackjack.describeRules(tableConfig);
     slots.describeMachine(tableConfig);
     roulette.describeTable(tableConfig);
@@ -203,6 +217,93 @@ function renderFloor() {
       + 'These are the real published odds.',
   }));
 }
+
+// ---------------------------------------------------------------- account
+
+/** The account page, reached by clicking your own name in the top bar. */
+function renderAccount() {
+  const { identity, balance } = session.get();
+  const guest = identity?.role === 'GUEST';
+
+  setText(qs('#account-subtitle'), guest
+    ? 'You are playing as a guest. Nothing about this session is stored on the server.'
+    : 'Your account details and settings.');
+
+  // A guest has no UID of their own; the session id is what identifies them, and it is what an
+  // admin would credit against, so it is the useful thing to show.
+  setText(qs('#account-id-label'), guest ? 'Session ID' : 'UID');
+  setText(qs('#account-uid'), identity?.uid ?? '');
+  setText(qs('#account-username'), guest ? '—' : (identity?.username ?? ''));
+  setText(qs('#account-kind'), guest ? 'Guest' : (identity?.role === 'ADMIN' ? 'Admin' : 'Player'));
+  setText(qs('#account-balance-detail'), formatMoney(balance ?? 0));
+
+  // Only a registered account has a password or a username worth showing.
+  show(qs('#password-section'), !guest);
+  // The cashier belongs to a member and nobody else. A guest has no account to move money to
+  // or from, and an admin credits balances from the admin console instead, so offering either
+  // of them a deposit button would be offering something that does not apply to them.
+  show(qs('#cashier-section'), identity?.role === 'PLAYER');
+  show(qs('#account-username-row-label'), !guest);
+  show(qs('#account-username'), !guest);
+
+  setText(qs('#delete-heading'), guest ? 'End this session' : 'Delete account');
+  setText(qs('#delete-hint'), guest
+    ? 'Ends your guest session and forgets your chips. Nothing was stored, so there is nothing '
+      + 'left behind.'
+    : 'Deletes your account and your entire history for good. This cannot be undone.');
+  setText(qs('#delete-submit'), guest ? 'End my session' : 'Delete my account');
+  show(qs('#delete-password-row'), !guest);
+
+  setText(qs('#password-error'), '');
+  setText(qs('#password-success'), '');
+  setText(qs('#delete-error'), '');
+  qs('#current-password').value = '';
+  qs('#new-password').value = '';
+  qs('#delete-password').value = '';
+}
+
+qs('#password-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setText(qs('#password-error'), '');
+  setText(qs('#password-success'), '');
+
+  try {
+    const result = await api.changePassword(
+      qs('#current-password').value,
+      qs('#new-password').value,
+    );
+    setText(qs('#password-success'), result.message);
+    // Do not leave either password sitting in the DOM.
+    qs('#current-password').value = '';
+    qs('#new-password').value = '';
+  } catch (error) {
+    setText(qs('#password-error'), error.message);
+  }
+});
+
+qs('#delete-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setText(qs('#delete-error'), '');
+
+  const { identity } = session.get();
+  const guest = identity?.role === 'GUEST';
+  const confirmed = window.confirm(guest
+    ? 'End this guest session? Your chips will be gone.'
+    : 'Delete your account and all of its history? This cannot be undone.');
+  if (!confirmed) return;
+
+  try {
+    const result = await api.deleteAccount(qs('#delete-password').value);
+    qs('#delete-password').value = '';
+    // The account is gone, so the token that named it is worthless: drop it and start over.
+    api.clearSession();
+    session.set({ identity: null, balance: null, status: 'signed-out' });
+    showView('lobby');
+    toast(result.message, 'success');
+  } catch (error) {
+    setText(qs('#delete-error'), error.message);
+  }
+});
 
 // ---------------------------------------------------------------- history
 
@@ -413,6 +514,9 @@ function toast(message, kind = '') {
 // ---------------------------------------------------------------- startup
 
 async function start() {
+  // Public, and the lobby's sign-up form needs it to state the password rule.
+  await loadConfig();
+
   if (api.isSignedIn) {
     session.set({ identity: api.identity, status: 'signed-in' });
     await refreshBalance();

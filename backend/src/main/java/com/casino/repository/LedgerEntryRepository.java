@@ -13,6 +13,16 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     List<LedgerEntry> findByUserIdOrderByCreatedAtDescIdDesc(Long userId, Pageable pageable);
 
     /**
+     * Removes an account's whole ledger.
+     *
+     * <p>The foreign key cascades on delete in PostgreSQL, but the entity maps {@code user_id} as
+     * a plain column rather than a relation, so nothing in the application layer guarantees that
+     * cascade exists on whatever schema it is pointed at. Deleting explicitly makes closing an
+     * account mean the same thing everywhere instead of depending on a database feature.
+     */
+    long deleteByUserId(Long userId);
+
+    /**
      * Money staked and money returned across every game the account has played.
      *
      * <p>Aggregated in the database over the whole ledger rather than over the page the history

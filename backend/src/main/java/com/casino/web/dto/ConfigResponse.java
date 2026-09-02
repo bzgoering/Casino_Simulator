@@ -15,6 +15,8 @@ public record ConfigResponse(
         /** The highest maximum bet an administrator may set, on any game. */
         BigDecimal maxConfigurableBet,
         int maxRouletteBets,
+        /** Shortest acceptable password, so the sign-up and change forms need not restate it. */
+        int passwordMinLength,
         BlackjackInfo blackjack,
         SlotsInfo slots,
         RouletteInfo roulette) {

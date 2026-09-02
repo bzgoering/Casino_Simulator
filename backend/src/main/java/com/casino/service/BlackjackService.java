@@ -210,6 +210,16 @@ public class BlackjackService {
         }
     }
 
+    /**
+     * Forgets a seat entirely, for an account that is going away.
+     *
+     * <p>Any round still open on it is abandoned. The stake was already debited and the account
+     * is about to cease to exist, so there is nothing left to settle.
+     */
+    public void closeTable(String subject) {
+        tables.remove(subject);
+    }
+
     /** Drops seats nobody has used for a while, so idle tables do not accumulate. */
     @Scheduled(fixedDelayString = "PT10M")
     public void evictIdleTables() {

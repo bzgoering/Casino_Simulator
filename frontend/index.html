@@ -20,7 +20,8 @@
         <button type="button" data-view="admin" id="nav-admin" hidden>Admin</button>
       </nav>
       <div class="account">
-        <span class="account-name" id="account-name"></span>
+        <button type="button" class="account-name" id="account-name" data-view="account"
+                title="Your account"></button>
         <span class="chip" id="account-role"></span>
         <span class="balance" id="account-balance" aria-live="polite">$0.00</span>
         <button type="button" id="sign-out" class="link">Sign out</button>
@@ -62,8 +63,8 @@
             <p class="hint">3&ndash;32 characters: letters, numbers or underscore.</p>
             <label for="signup-password">Password</label>
             <input id="signup-password" name="password" type="password"
-                   autocomplete="new-password" required minlength="10" maxlength="72" />
-            <p class="hint">At least 10 characters. New players start with $100.</p>
+                   autocomplete="new-password" required maxlength="72" />
+            <p class="hint"><span class="pw-rule"></span> New players start with $100.</p>
             <button type="submit" class="primary">Create account</button>
           </form>
 
@@ -191,6 +192,65 @@
             <div class="cloth" id="roulette-cloth"></div>
           </div>
         </div>
+      </section>
+
+      <section class="view" id="view-account" hidden>
+        <h1>Your account</h1>
+        <p class="subtitle" id="account-subtitle"></p>
+
+        <dl class="account-facts">
+          <dt id="account-id-label">UID</dt>
+          <dd class="uid" id="account-uid"></dd>
+          <dt id="account-username-row-label">Username</dt>
+          <dd id="account-username"></dd>
+          <dt>Account type</dt>
+          <dd id="account-kind"></dd>
+          <dt>Balance</dt>
+          <dd class="amount" id="account-balance-detail"></dd>
+        </dl>
+
+        <section class="account-section" id="password-section">
+          <h2>Change password</h2>
+          <form class="admin-form" id="password-form" autocomplete="on">
+            <label for="current-password">Current password</label>
+            <input id="current-password" name="current-password" type="password"
+                   autocomplete="current-password" required maxlength="72" />
+            <label for="new-password">New password</label>
+            <input id="new-password" name="new-password" type="password"
+                   autocomplete="new-password" required maxlength="72" />
+            <p class="hint"><span class="pw-rule"></span> Not your username.</p>
+            <button type="submit" class="primary">Change password</button>
+            <p class="form-error" id="password-error" role="alert"></p>
+            <p class="form-success" id="password-success" role="status"></p>
+          </form>
+        </section>
+
+        <section class="account-section" id="cashier-section">
+          <h2>Cashier</h2>
+          <p class="hint">
+            This is a play-money simulation. There is no cashier: no real money goes in, and none
+            comes out. These controls are here to show where they would be and do nothing.
+          </p>
+          <div class="cashier-row">
+            <button type="button" id="deposit" disabled aria-disabled="true">Deposit</button>
+            <button type="button" id="withdraw" disabled aria-disabled="true">Withdraw</button>
+            <span class="chip">Unavailable</span>
+          </div>
+        </section>
+
+        <section class="account-section danger">
+          <h2 id="delete-heading">Delete account</h2>
+          <p class="hint" id="delete-hint"></p>
+          <form class="admin-form" id="delete-form">
+            <div id="delete-password-row">
+              <label for="delete-password">Confirm your password</label>
+              <input id="delete-password" name="delete-password" type="password"
+                     autocomplete="current-password" maxlength="72" />
+            </div>
+            <button type="submit" class="danger-btn" id="delete-submit">Delete my account</button>
+            <p class="form-error" id="delete-error" role="alert"></p>
+          </form>
+        </section>
       </section>
 
       <section class="view" id="view-history" hidden>

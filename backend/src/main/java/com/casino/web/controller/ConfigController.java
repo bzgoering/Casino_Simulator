@@ -9,6 +9,7 @@ import com.casino.game.slots.SlotPaytable;
 import com.casino.game.slots.SlotSymbol;
 import com.casino.service.BetValidator;
 import com.casino.service.BlackjackService;
+import com.casino.service.PasswordPolicy;
 import com.casino.service.SlotsService;
 import com.casino.web.dto.ConfigResponse;
 import java.util.LinkedHashMap;
@@ -81,6 +82,7 @@ public class ConfigController {
         return new ConfigResponse(
                 betValidator.maxConfigurableBet(),
                 betValidator.maxRouletteBets(),
+                PasswordPolicy.MIN_LENGTH,
                 blackjackInfo,
                 slotsInfo,
                 rouletteInfo);

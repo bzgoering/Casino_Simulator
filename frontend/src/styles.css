@@ -19,6 +19,11 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute is how show() hides things, and the browser's own rule for it is a
+   user-agent style that any author `display` here silently beats. Stating it once, with weight,
+   means a new component cannot quietly become unhideable the way .topbar had. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -61,7 +66,12 @@ h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 .topnav button.active { background: var(--felt); color: #fff; }
 
 .account { display: flex; align-items: center; gap: .7rem; font-size: .9rem; }
-.account-name { font-weight: 600; }
+/* The name is the way in to the account page, so it has to look clickable. */
+.account-name {
+  font-weight: 600; background: none; border: none; color: var(--text);
+  padding: .15rem .4rem; border-radius: var(--radius); cursor: pointer; font-size: .9rem;
+}
+.account-name:hover { background: var(--panel-light); color: var(--gold); }
 .balance { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .chip {
@@ -79,7 +89,6 @@ h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 /* ---------- layout ---------- */
 
 main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
-.view[hidden] { display: none; }
 .subtitle { color: var(--muted); margin: 0 0 1.2rem; }
 
 /* ---------- lobby ---------- */
@@ -102,7 +111,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
 .tabs button.active { background: var(--felt); color: #fff; border-color: var(--felt); }
 
 .tabpanel { display: flex; flex-direction: column; gap: .4rem; }
-.tabpanel[hidden] { display: none; }
 
 label { font-size: .85rem; color: var(--muted); }
 
@@ -214,7 +222,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* What the whole round will actually cost, since every box is charged the bet. */
 .stake-note { font-size: .85rem; color: var(--gold); font-variant-numeric: tabular-nums; }
 .action-row { display: flex; gap: .5rem; flex-wrap: wrap; }
-.action-row[hidden] { display: none; }
 .shoe-info { font-size: .8rem; color: var(--muted); margin: 0; }
 
 /* ---------- slots ---------- */
@@ -379,6 +386,31 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .bet-actions { display: flex; gap: .5rem; }
 .bet-actions .primary { margin-top: 0; }
 
+/* ---------- account ---------- */
+
+.account-facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.2rem;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.2rem; margin: 0 0 2rem; max-width: 620px;
+}
+.account-facts dt { color: var(--muted); font-size: .85rem; }
+.account-facts dd { margin: 0; font-weight: 600; }
+.account-facts dd.uid { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82rem; word-break: break-all; }
+.account-facts dd.amount { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.account-section { margin-bottom: 2rem; max-width: 620px; }
+.account-section h2 { font-size: 1rem; }
+
+.cashier-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+/* Deleting an account is irreversible, so it does not get to look like the other buttons. */
+.account-section.danger h2 { color: #ff9a9a; }
+.danger-btn {
+  background: transparent; border: 1px solid var(--red); color: #ff9a9a; font-weight: 600;
+  margin-top: .6rem; align-self: flex-start;
+}
+.danger-btn:hover:not(:disabled) { background: var(--red); color: #fff; }
+
 /* ---------- tables ---------- */
 
 .history-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
@@ -391,7 +423,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .amount.negative { color: #ff9a9a; }
 .history-table td.uid { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8rem; }
 
-.history-table tfoot[hidden] { display: none; }
 .history-table tfoot th, .history-table tfoot td {
   border-top: 1px solid var(--border); border-bottom: none; color: var(--muted);
 }
@@ -423,7 +454,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   border-radius: var(--radius); padding: .7rem 1.2rem; box-shadow: var(--shadow);
   max-width: 90vw; z-index: 50;
 }
-.toast[hidden] { display: none; }
 .toast.error { border-color: var(--red); color: #ffc9c9; }
 .toast.success { border-color: var(--green); color: #b6f2d0; }
 

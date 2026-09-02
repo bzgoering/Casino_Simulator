@@ -19,6 +19,10 @@ public final class AccountResponses {
     public record MeResponse(String uid, String username, String role, BigDecimal balance, boolean guest) {
     }
 
+    /** Confirmation that an account was closed. */
+    public record DeletedResponse(String kind, String username, String message) {
+    }
+
     /** One line of account history. Guests have none, by design. */
     public record LedgerEntryView(
             String type,

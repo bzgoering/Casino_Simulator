@@ -2,6 +2,7 @@ package com.casino.support;
 
 import com.casino.domain.Role;
 import com.casino.domain.UserAccount;
+import com.casino.repository.LedgerEntryRepository;
 import com.casino.repository.UserAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +37,9 @@ public abstract class ApiTestSupport {
 
     @Autowired
     protected UserAccountRepository users;
+
+    @Autowired
+    protected LedgerEntryRepository ledger;
 
     @Autowired
     protected PasswordEncoder passwordEncoder;

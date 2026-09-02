@@ -12,9 +12,6 @@ import com.casino.security.CasinoPrincipal;
 import com.casino.security.JwtService;
 import com.casino.web.error.CasinoException;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,32 +38,29 @@ public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]{3,32}$");
-    private static final int MIN_PASSWORD_LENGTH = 10;
-    private static final int MAX_PASSWORD_BYTES = 72;
 
     /** A dummy hash to verify against when the username is unknown, to equalise timing. */
     private static final String DUMMY_HASH =
             "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-
-    private static final Set<String> BANNED_PASSWORDS = Set.of(
-            "password12", "password123", "1234567890", "qwertyuiop", "letmein123",
-            "iloveyou12", "welcome123", "admin12345", "casino1234", "blackjack1");
 
     private final UserAccountRepository users;
     private final LedgerEntryRepository ledger;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final GuestSessionService guests;
+    private final PasswordPolicy passwordPolicy;
     private final CasinoProperties properties;
 
     public AuthService(UserAccountRepository users, LedgerEntryRepository ledger,
                        PasswordEncoder passwordEncoder, JwtService jwtService,
-                       GuestSessionService guests, CasinoProperties properties) {
+                       GuestSessionService guests, PasswordPolicy passwordPolicy,
+                       CasinoProperties properties) {
         this.users = users;
         this.ledger = ledger;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.guests = guests;
+        this.passwordPolicy = passwordPolicy;
         this.properties = properties;
     }
 
@@ -74,7 +68,7 @@ public class AuthService {
     @Transactional
     public AuthResult signUp(String rawUsername, String rawPassword) {
         String username = validateUsername(rawUsername);
-        validatePassword(rawPassword, username);
+        passwordPolicy.validate(rawPassword, username);
 
         if (users.existsByUsernameIgnoreCase(username)) {
             throw CasinoException.conflict("That username is already taken.");
@@ -148,24 +142,6 @@ public class AuthService {
                     "Username must be 3-32 characters using letters, numbers or underscore.");
         }
         return username;
-    }
-
-    private static void validatePassword(String password, String username) {
-        if (password == null || password.length() < MIN_PASSWORD_LENGTH) {
-            throw CasinoException.badRequest(
-                    "Password must be at least " + MIN_PASSWORD_LENGTH + " characters.");
-        }
-        // BCrypt ignores bytes past 72; a longer password would be silently weakened.
-        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw CasinoException.badRequest("Password must be at most 72 bytes.");
-        }
-        String lower = password.toLowerCase(Locale.ROOT);
-        if (BANNED_PASSWORDS.contains(lower)) {
-            throw CasinoException.badRequest("That password is too common. Please choose another.");
-        }
-        if (lower.contains(username.toLowerCase(Locale.ROOT))) {
-            throw CasinoException.badRequest("Password must not contain your username.");
-        }
     }
 
     /** A signed-in caller: their token, who they are, and their balance. */

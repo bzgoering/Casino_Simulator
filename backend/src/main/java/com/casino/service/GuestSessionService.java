@@ -72,6 +72,16 @@ public class GuestSessionService {
                 .filter(s -> !s.isExpired(properties.guest().sessionTtl()));
     }
 
+    /**
+     * Ends a session at the player's request.
+     *
+     * <p>This is the whole of "delete my account" for a guest: nothing about them was ever
+     * written down, so dropping the in-memory session leaves nothing behind.
+     */
+    public void end(String id) {
+        sessions.remove(id);
+    }
+
     void updateBalance(GuestSession session, BigDecimal newBalance) {
         session.setBalance(newBalance);
     }

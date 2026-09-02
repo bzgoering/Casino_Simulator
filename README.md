@@ -228,23 +228,25 @@ ledger sums to the account balance.
 replicas would each enforce their own limits; move both to Redis before scaling out. The token is
 held in `sessionStorage`, which any script on the page could read, so the CSP and the
 `textContent` discipline are the actual XSS defences. There is no token revocation list, so a
-stolen token stays valid until it expires.
+stolen token stays valid until it expires — and for the same reason, changing a password does not
+end sessions already in progress.
 
 ---
 
 ## Tests
 
 ```bash
-cd backend  && ./mvnw test      # 166 tests
-cd frontend && npm test         # 74 tests
+cd backend  && ./mvnw test      # 180 tests
+cd frontend && npm test         # 82 tests
 ```
 
-**Backend (166)** covers engine rules against scripted decks (naturals, splits, split aces,
+**Backend (180)** covers engine rules against scripted decks (naturals, splits, split aces,
 doubling, dealer draw rules, bust handling, multi-box dealing order and settlement), exhaustive
 per-payline RTP and house-edge verification, and full HTTP-level integration tests on H2 spanning auth, the
-games, the authorisation boundary and the admin flows including limit changes.
+games, the authorisation boundary and the admin flows including limit changes, and self-service password changes and
+account deletion.
 
-**Frontend (74)** covers money formatting and bet validation, card parsing, the client-side
+**Frontend (82)** covers money formatting and bet validation, card parsing, the client-side
 roulette geometry including the forged-bet cases the server also rejects, the rendered roulette cloth and slot
 machine under jsdom, and the API client's session, error and network handling against a mocked
 `fetch`.
@@ -277,6 +279,8 @@ Two real bugs were found and fixed by these tests during development:
 | GET | `/api/config` | public | Limits, paytables, wheel layout |
 | GET | `/api/me` | any | Current identity and balance |
 | GET | `/api/me/history` | any | Own ledger plus lifetime play totals (empty for guests) |
+| POST | `/api/me/password` | signed in | Change your own password |
+| POST | `/api/me/delete` | any | Close your own account, or end a guest session |
 | POST | `/api/games/blackjack/deal` | any | Start a round on 1-4 boxes |
 | POST | `/api/games/blackjack/action` | any | HIT / STAND / DOUBLE / SPLIT |
 | GET | `/api/games/blackjack/current` | any | Reconnect to a hand in progress |
@@ -298,6 +302,55 @@ curl -sX POST localhost:8080/api/games/slots/spin \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"bet": 5.00}'
 ```
+
+---
+
+## The account page
+
+Clicking your own name in the top bar opens it. It shows your UID (for a guest, the session id,
+which is the same thing an admin credits against), your username, your account type and your
+balance, and offers three things.
+
+**Changing your password** requires the current one as well as the new one: a bearer token on its
+own must not be enough to take an account over.
+
+`PasswordPolicy` is the only thing that decides whether a password is acceptable, and both
+sign-up and a later change call it. That is not just tidiness. The rules had also been restated
+as bean-validation annotations on the request records, and an annotation fires *before* the
+service does, so the copy on the DTO was the one players actually saw — the same mistake got a
+different answer depending on which endpoint you made it on:
+
+```
+signup  ->  400 "Some fields need attention."  {"password": "must be between 10 and 72 ..."}
+change  ->  400 "Password must be at least 10 characters."
+```
+
+The request records now check shape only (`@NotBlank`), the policy owns every rule, and the two
+endpoints answer identically. The minimum length is published on `/api/config` as
+`passwordMinLength`, so the sign-up and change-password forms state the rule from that one figure
+instead of hardcoding it in the markup.
+
+**The cashier does nothing, and only members see it.** Deposit and Withdraw are rendered disabled,
+with a line saying so. This is a play-money simulation with no real payments anywhere in it; the
+controls are there to show where a cashier would sit, and are inert rather than merely unwired, so
+nobody can click one and be left wondering whether something happened. The whole section is hidden
+from guests, who have no account to move money to or from, and from admins, who credit balances
+from the admin console instead.
+
+**Deleting an account** takes the ledger with it. For a guest there is nothing to delete: the
+in-memory session is dropped, and since guests were never written to the database that really is
+the end of them. For a registered account the password is required again, the ledger rows are
+removed explicitly and then the account row. The admin audit trail deliberately survives, because
+it records what an *administrator* did and has to outlive the account it was done to.
+
+The last remaining admin cannot delete themselves. That is not paternalism about the account: it
+is the only thing standing between a mistyped click and a deployment nobody can administer again.
+An admin may leave once another admin exists.
+
+> The ledger is deleted explicitly rather than left to the foreign key's `ON DELETE CASCADE`. The
+> entity maps `user_id` as a plain column rather than a relation, so nothing in the application
+> layer guarantees that cascade exists on whatever schema it is pointed at — and it does not exist
+> on the H2 schema the tests build. Closing an account now means the same thing everywhere.
 
 ---
 
