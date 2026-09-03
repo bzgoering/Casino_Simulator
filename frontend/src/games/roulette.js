@@ -1,6 +1,7 @@
 import { el, clear, setText, qs, qsa } from '../lib/dom.js';
 import { formatMoney, formatDelta, validateBet } from '../lib/money.js';
 import { POCKET_ORDER, colorOf, layoutGrid, pocketsFor, payoutFor } from '../lib/roulette-layout.js';
+import { CHIP_VALUES, chipBreakdown, topChip } from '../lib/chips.js';
 
 /**
  * Roulette view.
@@ -18,27 +19,52 @@ export function createRouletteView({ api, onBalance, onError, config }) {
   const stakedNode = qs('#roulette-staked');
   const spinButton = qs('#roulette-spin');
   const clearButton = qs('#roulette-clear');
+  const chipPicker = qs('#chip-picker');
 
   /** @type {Array<{type: string, selection: string, amount: number}>} */
   let bets = [];
-  let chipValue = 1;
+  let chipValue = CHIP_VALUES[CHIP_VALUES.length - 1];
   let busy = false;
   const recent = [];
 
   buildWheel();
   buildCloth();
+  buildChipPicker();
 
-  for (const button of qsa('.chip-btn')) {
-    button.addEventListener('click', () => {
-      chipValue = Number(button.dataset.chip);
-      for (const other of qsa('.chip-btn')) other.classList.toggle('active', other === button);
-    });
+  /**
+   * The picker, built from the same list the cloth draws its piles from.
+   *
+   * Each button is the chip it selects rather than a pill naming it, so the thing you pick and
+   * the thing that lands on the number are recognisably the same object.
+   */
+  function buildChipPicker() {
+    clear(chipPicker);
+    for (const value of [...CHIP_VALUES].reverse()) {
+      const button = el('button', {
+        className: value === chipValue ? 'chip-btn active' : 'chip-btn',
+        text: `$${value}`,
+        attrs: {
+          type: 'button',
+          'data-chip': String(value),
+          'aria-label': `${value} dollar chip`,
+          'aria-pressed': String(value === chipValue),
+        },
+      });
+      button.addEventListener('click', () => {
+        chipValue = value;
+        for (const other of qsa('.chip-btn', chipPicker)) {
+          other.classList.toggle('active', other === button);
+          other.setAttribute('aria-pressed', String(other === button));
+        }
+      });
+      chipPicker.append(button);
+    }
   }
 
   clearButton.addEventListener('click', () => {
     bets = [];
     renderBets();
-    markChips();
+    renderChips();
   });
 
   spinButton.addEventListener('click', spin);
@@ -101,10 +127,26 @@ export function createRouletteView({ api, onBalance, onError, config }) {
   function cell({ label, className, type, selection, title }) {
     const node = el('button', {
       className,
-      text: label,
-      attrs: { type: 'button', 'data-type': type, 'data-selection': selection, title: title ?? label },
+      attrs: {
+        type: 'button',
+        'data-type': type,
+        'data-selection': selection,
+        // Kept so the tooltip can be rebuilt around it as chips come and go.
+        'data-title': title ?? label,
+        title: title ?? label,
+      },
+      children: [
+        el('span', { className: 'cell-label', text: label }),
+        el('span', { className: 'chip-stack' }),
+      ],
     });
     node.addEventListener('click', () => placeChip(type, selection));
+    // Right-click lifts the top chip back off, the way you would take it back at the table.
+    // Without preventDefault the browser menu opens over the cloth on every removal.
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      removeChip(type, selection);
+    });
     return node;
   }
 
@@ -139,7 +181,28 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       bets.push({ type, selection, amount: chipValue });
     }
     renderBets();
-    markChips();
+    renderChips();
+  }
+
+  /**
+   * Takes the top chip off a space, and the bet with it once nothing is left.
+   *
+   * The top of a pile is its smallest chip, so this removes what the player can see sitting on
+   * top rather than a click they made earlier and can no longer pick out. Taking the top off
+   * $101 leaves the $100 chip; taking it off a lone $5 clears the space.
+   */
+  function removeChip(type, selection) {
+    if (busy) return;
+
+    const index = bets.findIndex((b) => b.type === type && b.selection === selection);
+    if (index === -1) return;
+
+    const left = Number((bets[index].amount - topChip(bets[index].amount)).toFixed(2));
+    if (left > 0) bets[index].amount = left;
+    else bets.splice(index, 1);
+
+    renderBets();
+    renderChips();
   }
 
   function totalStaked() {
@@ -183,14 +246,44 @@ export function createRouletteView({ api, onBalance, onError, config }) {
     return readable[bet.type] ?? `${bet.type} ${bet.selection}`;
   }
 
-  /** Highlights the cells that currently carry a chip. */
-  function markChips() {
+  /**
+   * Draws each space's pile: one token per chip actually placed, so the stake can be counted off
+   * the cloth rather than read from the list beside it.
+   *
+   * The tokens are spread by a step that shrinks as the pile grows. A fixed offset would look
+   * right for three chips and send thirty climbing out of the cell and over the numbers above.
+   */
+  function renderChips() {
     for (const node of qsa('.cell', cloth)) {
-      const has = bets.some(
-        (bet) => bet.type === node.dataset.type && bet.selection === node.dataset.selection,
-      );
-      node.classList.toggle('has-chip', has);
+      const stack = qs('.chip-stack', node);
+      clear(stack);
       node.classList.remove('winner');
+
+      const bet = bets.find(
+        (b) => b.type === node.dataset.type && b.selection === node.dataset.selection,
+      );
+      if (!bet) {
+        node.setAttribute('title', node.dataset.title);
+        node.removeAttribute('aria-label');
+        continue;
+      }
+
+      // Drawn from the stake, not from a history of clicks: five singles show as one $5 chip.
+      const pile = chipBreakdown(bet.amount);
+      const step = Math.min(4, 20 / Math.max(pile.length - 1, 1));
+      pile.forEach((value, index) => {
+        const token = el('span', {
+          className: 'chip-token',
+          attrs: { 'data-chip': String(value) },
+        });
+        token.style.bottom = `${(index * step).toFixed(2)}px`;
+        stack.append(token);
+      });
+
+      const summary = `${node.dataset.title}: ${formatMoney(bet.amount)} staked`;
+      node.setAttribute('title', summary);
+      // A pile of coloured discs says nothing to a screen reader; the count and total must.
+      node.setAttribute('aria-label', summary);
     }
   }
 

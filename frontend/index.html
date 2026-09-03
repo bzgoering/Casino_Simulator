@@ -182,17 +182,19 @@
 
           <div class="cloth-area">
             <div class="chip-row">
-              <span>Chip</span>
-              <button type="button" class="chip-btn active" data-chip="1">$1</button>
-              <button type="button" class="chip-btn" data-chip="5">$5</button>
-              <button type="button" class="chip-btn" data-chip="25">$25</button>
-              <button type="button" class="chip-btn" data-chip="100">$100</button>
+              <span id="chip-picker-label">Chip</span>
+              <!-- Filled from the one list of denominations, so a chip cannot be offered here
+                   that the cloth does not know how to draw. -->
+              <div class="chip-picker" id="chip-picker" role="group"
+                   aria-labelledby="chip-picker-label"></div>
               <div class="bet-actions">
                 <button type="button" id="roulette-clear">Clear</button>
                 <button type="button" class="primary" id="roulette-spin">Spin</button>
               </div>
             </div>
             <div class="cloth" id="roulette-cloth"></div>
+            <p class="hint cloth-hint">Left click a space to add a chip, right click to take one
+              back off.</p>
           </div>
         </div>
       </section>

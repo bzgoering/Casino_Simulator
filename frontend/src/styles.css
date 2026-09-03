@@ -385,8 +385,35 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .chip-row span { color: var(--muted); font-size: .85rem; }
 /* Clear and Spin sit at the right-hand end of the chip row, away from the chip values. */
 .chip-row .bet-actions { margin-left: auto; }
-.chip-btn { border-radius: 999px; min-width: 54px; }
-.chip-btn.active { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 700; }
+.chip-picker { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+/* One palette, two users: the picker below and the piles on the cloth both read their colours
+   from whichever [data-chip] value they carry, so a chip looks the same wherever it appears.
+   Secondary is the rim and the lettering, which is what makes a chip legible against a felt
+   the same colour as itself. */
+[data-chip="1"]   { --chip-primary: #f4f6fa; --chip-secondary: #14181f; }
+[data-chip="5"]   { --chip-primary: #d63b3b; --chip-secondary: #ffffff; }
+[data-chip="10"]  { --chip-primary: #2f6fd0; --chip-secondary: #ffffff; }
+[data-chip="25"]  { --chip-primary: #2fa360; --chip-secondary: #ffffff; }
+[data-chip="50"]  { --chip-primary: #e08a2e; --chip-secondary: #ffffff; }
+[data-chip="100"] { --chip-primary: #14181f; --chip-secondary: #ffffff; }
+
+/* The picker is made of the chips themselves, not pills naming them. */
+.chip-btn {
+  width: 48px; height: 48px; min-width: 48px; padding: 0;
+  border-radius: 50%;
+  background: var(--chip-primary);
+  color: var(--chip-secondary);
+  border: 3px dashed var(--chip-secondary);
+  font-weight: 700; font-size: .72rem; line-height: 1;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 55%), 0 2px 4px rgb(0 0 0 / 40%);
+  transition: transform .12s ease;
+}
+/* The generic button hover would paint over the chip colour, so it is restated here. */
+.chip-btn:hover:not(:disabled) { background: var(--chip-primary); transform: translateY(-3px); }
+.chip-btn.active {
+  outline: 3px solid var(--gold); outline-offset: 2px; transform: translateY(-3px);
+}
 
 /* Three columns of numbers, with the column bets closing off the foot of each. */
 .cloth {
@@ -396,8 +423,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 
 .cell {
+  position: relative;
   background: var(--felt); color: #fff; border: 1px solid #0a2e1d;
-  padding: .55rem .2rem; text-align: center; font-weight: 600; cursor: pointer;
+  /* Room under the label for the chips to sit on, so a pile never covers its own number. */
+  padding: .4rem .2rem 1.35rem; min-height: 46px;
+  text-align: center; font-weight: 600; cursor: pointer;
   border-radius: 4px; font-size: .9rem;
 }
 .cell:hover { outline: 2px solid var(--gold); }
@@ -405,8 +435,28 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .cell.BLACK { background: #1c1f26; }
 .cell.GREEN { background: var(--green); grid-column: 1 / -1; }
 .cell.outside { background: var(--felt); font-size: .8rem; }
-.cell.has-chip { box-shadow: inset 0 0 0 3px var(--gold); }
 .cell.winner { animation: flash .5s ease-in-out 3; }
+
+.cloth-hint { text-align: center; margin: .6rem 0 0; }
+
+/* ---------- chips on the cloth ---------- */
+
+/* The pile is drawn, not implied by a border: one token per chip the player actually put down.
+   It takes no clicks of its own so the whole cell stays one target, left to add and right to
+   take the top one back. */
+.chip-stack {
+  position: absolute; left: 50%; bottom: 5px;
+  width: 17px; height: 17px; transform: translateX(-50%);
+  pointer-events: none;
+}
+.chip-token {
+  position: absolute; left: 0; width: 18px; height: 18px; border-radius: 50%;
+  /* The dashed rim is what reads as a casino chip, and the dark outline is what keeps a red
+     chip visible on a red number. */
+  border: 2px dashed var(--chip-secondary);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 55%), 0 1px 2px rgb(0 0 0 / 45%);
+  background: var(--chip-primary);
+}
 
 @keyframes flash {
   50% { box-shadow: inset 0 0 0 4px #fff; }
