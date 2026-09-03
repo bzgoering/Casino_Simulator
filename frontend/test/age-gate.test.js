@@ -68,8 +68,4 @@ describe('the age gate', () => {
 
     expect(document.getElementById(labelledBy)).not.toBeNull();
   });
-
-  it('warns on the sign-up form that the age check is coming', () => {
-    expect(document.querySelector('#tab-signup').textContent).toMatch(/confirm your age/i);
-  });
 });

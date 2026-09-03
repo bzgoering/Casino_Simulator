@@ -35,18 +35,13 @@
           <p class="tagline">Blackjack, slots and roulette. Play money only.</p>
 
           <div class="tabs" role="tablist">
-            <button role="tab" type="button" class="active" data-tab="guest">Guest</button>
-            <button role="tab" type="button" data-tab="login">Sign in</button>
-            <button role="tab" type="button" data-tab="signup">Sign up</button>
+            <button role="tab" type="button" class="active" aria-selected="true"
+                    data-tab="login">Sign in</button>
+            <button role="tab" type="button" aria-selected="false"
+                    data-tab="signup">Sign up</button>
           </div>
 
-          <div class="tabpanel" id="tab-guest">
-            <p>Play instantly with <strong>$10,000</strong> in chips. Nothing is saved &mdash; your
-              balance disappears when the session ends.</p>
-            <button type="button" class="primary" id="play-as-guest">Play as guest</button>
-          </div>
-
-          <form class="tabpanel" id="tab-login" hidden autocomplete="on">
+          <form class="tabpanel" id="tab-login" autocomplete="on">
             <label for="login-username">Username</label>
             <input id="login-username" name="username" autocomplete="username" required
                    maxlength="32" />
@@ -66,9 +61,17 @@
                    autocomplete="new-password" required maxlength="72" />
             <p class="hint"><span class="pw-rule"></span> New players start with $100.</p>
             <button type="submit" class="primary">Create account</button>
+            <p class="hint btn-note age-rule-short">You must be 21+ to sign up.</p>
           </form>
 
           <p class="form-error" id="lobby-error" role="alert" aria-live="assertive"></p>
+
+          <div class="guest-option">
+            <p class="or-divider"><span>or</span></p>
+            <button type="button" class="guest-btn" id="play-as-guest">Continue as guest</button>
+            <p class="hint btn-note">Play instantly with <strong>$10,000</strong> in chips.
+              Nothing is saved, your balance disappears when the session ends.</p>
+          </div>
         </div>
       </section>
 

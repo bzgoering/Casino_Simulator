@@ -141,6 +141,30 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .form-error { color: var(--red); font-size: .88rem; min-height: 1.2rem; margin: .6rem 0 0; }
 .form-success { color: var(--green); font-size: .88rem; min-height: 1.2rem; margin: .2rem 0 0; }
 
+/* ---------- the guest way in ---------- */
+
+/* Deliberately not .primary: signing in or signing up is the green one, and playing as a guest
+   is the quieter alternative underneath it, in the panel greys the rest of the chrome uses. */
+.guest-btn {
+  width: 100%;
+  background: var(--panel-light); border: 1px solid var(--border); color: var(--text);
+}
+.guest-btn:hover:not(:disabled) { background: var(--border); color: var(--gold); }
+
+.or-divider {
+  display: flex; align-items: center; gap: .7rem;
+  margin: .9rem 0 .8rem;
+  color: var(--muted); font-size: .72rem;
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.or-divider::before, .or-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
+
+/* A note sitting under a full-width button, centred on it rather than ranged left like the
+   hints that belong to a field. */
+.btn-note { text-align: center; margin: .5rem 0 0; }
+
 /* ---------- age gate ---------- */
 
 /* A modal over the whole page rather than a panel in the lobby card: it is the one thing on

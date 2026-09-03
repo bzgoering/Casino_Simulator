@@ -76,10 +76,17 @@ qs('#nav-lobby').addEventListener('click', () => showView('floor'));
 
 // ---------------------------------------------------------------- lobby
 
+// Two tabs now: guest is not a way of signing in, so it sits below the form rather than beside
+// the two ways that are.
 for (const tab of qsa('.tabs button')) {
   tab.addEventListener('click', () => {
-    for (const other of qsa('.tabs button')) other.classList.toggle('active', other === tab);
-    for (const panel of ['guest', 'login', 'signup']) {
+    for (const other of qsa('.tabs button')) {
+      const selected = other === tab;
+      other.classList.toggle('active', selected);
+      // These carry role="tab", so which one is current has to be said, not only shown.
+      other.setAttribute('aria-selected', String(selected));
+    }
+    for (const panel of ['login', 'signup']) {
       show(qs(`#tab-${panel}`), panel === tab.dataset.tab);
     }
     setText(qs('#lobby-error'), '');
@@ -246,6 +253,10 @@ function applyPasswordPolicy() {
 function applyAgePolicy() {
   for (const node of qsa('.age-rule')) {
     setText(node, `You must be ${LEGAL_AGE} or over to hold an account.`);
+  }
+  // Short form, for under the sign-up button where the dialog states it in full a click later.
+  for (const node of qsa('.age-rule-short')) {
+    setText(node, `You must be ${LEGAL_AGE}+ to sign up.`);
   }
 }
 
