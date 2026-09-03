@@ -141,6 +141,26 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .form-error { color: var(--red); font-size: .88rem; min-height: 1.2rem; margin: .6rem 0 0; }
 .form-success { color: var(--green); font-size: .88rem; min-height: 1.2rem; margin: .2rem 0 0; }
 
+/* ---------- age gate ---------- */
+
+/* A modal over the whole page rather than a panel in the lobby card: it is the one thing on
+   screen until it is answered. */
+.age-gate {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 1.6rem; width: min(380px, calc(100% - 2rem));
+  box-shadow: var(--shadow);
+}
+.age-gate::backdrop { background: rgb(0 0 0 / 65%); }
+.age-gate h2 { color: var(--gold); font-size: 1.25rem; }
+.age-gate-form { display: flex; flex-direction: column; gap: .4rem; }
+/* Without this the browser draws its own light calendar control on the dark field. */
+.age-gate input[type="date"] { color-scheme: dark; }
+
+.age-gate-actions { display: flex; gap: .5rem; margin-top: .6rem; }
+.age-gate-actions button { flex: 1; }
+.age-gate-actions .primary { margin-top: 0; }
+
 /* ---------- floor ---------- */
 
 .game-grid {

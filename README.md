@@ -11,6 +11,11 @@ You can play either way:
   history are kept between visits, and you can manage the account from the page behind your
   username.
 
+Signing up asks you to confirm your age first: an account is for **21 and over**, and anyone
+younger is seated as a guest instead of being turned away. The date of birth is checked in the
+browser and discarded on the spot — it is never sent to the server and never stored, so the only
+thing that outlives the question is which of the two doors above you came through.
+
 > **Play money only.** Nothing here touches real currency or real payments. There is no cashier:
 > the deposit and withdraw buttons on the account page are deliberately dead, and are there only
 > to show where they would sit in a real product.

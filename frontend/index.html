@@ -324,6 +324,25 @@
       </section>
     </main>
 
+    <dialog class="age-gate" id="age-gate" aria-labelledby="age-gate-title">
+      <form class="age-gate-form" id="age-gate-form" autocomplete="off">
+        <h2 id="age-gate-title">Confirm your age</h2>
+        <p class="hint age-rule">You must be 21 or over to hold an account.</p>
+
+        <label for="age-gate-dob">Date of birth</label>
+        <input id="age-gate-dob" name="dob" type="date" required autocomplete="off" />
+
+        <p class="hint">Checked here in your browser and thrown away immediately. Your date of
+          birth is never sent to the casino and is never stored.</p>
+        <p class="form-error" id="age-gate-error" role="alert" aria-live="assertive"></p>
+
+        <div class="age-gate-actions">
+          <button type="button" id="age-gate-cancel">Cancel</button>
+          <button type="submit" class="primary" id="age-gate-confirm">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
     <script type="module" src="/src/main.js"></script>

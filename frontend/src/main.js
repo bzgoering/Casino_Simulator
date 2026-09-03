@@ -2,6 +2,7 @@ import { CasinoApi } from './api/client.js';
 import { session } from './state/store.js';
 import { el, clear, setText, show, qs, qsa } from './lib/dom.js';
 import { formatMoney, formatDelta } from './lib/money.js';
+import { verifyAge, todayIso, LEGAL_AGE } from './lib/age.js';
 import { createBlackjackView } from './games/blackjack.js';
 import { createSlotsView } from './games/slots.js';
 import { createRouletteView } from './games/roulette.js';
@@ -97,12 +98,84 @@ qs('#tab-login').addEventListener('submit', async (event) => {
   ));
 });
 
-qs('#tab-signup').addEventListener('submit', async (event) => {
+qs('#tab-signup').addEventListener('submit', (event) => {
   event.preventDefault();
-  await enterCasino(() => api.signUp(
-    qs('#signup-username').value.trim(),
-    qs('#signup-password').value,
-  ));
+  openAgeGate();
+});
+
+// ---------------------------------------------------------------- age gate
+
+/**
+ * The age check that stands between "Create account" and an account.
+ *
+ * A date of birth is asked for, turned into a yes or no by verifyAge, and dropped: it is never
+ * put in the request, never written to storage, and the field is emptied in the same statement
+ * that reads it, so no copy of it outlives the click. What survives is only which door the
+ * player goes through — 21 and over gets the account they asked for, under 21 is seated as a
+ * guest instead.
+ *
+ * Because nothing is remembered, a sign-up that fails on a taken username asks again on the
+ * retry. That is the price of keeping no record of the answer, and it is the right way round.
+ */
+const ageGate = qs('#age-gate');
+
+function openAgeGate() {
+  setText(qs('#lobby-error'), '');
+  setText(qs('#age-gate-error'), '');
+
+  const field = qs('#age-gate-dob');
+  field.value = '';
+  // Nobody has been born tomorrow, and the picker should not offer to say otherwise.
+  field.max = todayIso();
+
+  // showModal traps focus and dims the page behind; show() is the fallback where a test
+  // environment or an older browser has <dialog> without the modal behaviour.
+  if (typeof ageGate.showModal === 'function') ageGate.showModal();
+  else ageGate.open = true;
+  field.focus();
+}
+
+function closeAgeGate() {
+  // Emptied on the way out as well as the way in, so an abandoned dialog leaves nothing sitting
+  // in the DOM either.
+  qs('#age-gate-dob').value = '';
+  setText(qs('#age-gate-error'), '');
+  if (typeof ageGate.close === 'function') ageGate.close();
+  else ageGate.open = false;
+}
+
+qs('#age-gate-cancel').addEventListener('click', closeAgeGate);
+// Escape closes a modal dialog without a submit, so clear up after that route too.
+ageGate.addEventListener('close', () => {
+  qs('#age-gate-dob').value = '';
+});
+
+qs('#age-gate-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const field = qs('#age-gate-dob');
+  // Read once and wiped in the same breath: from here on only the verdict exists.
+  const verdict = verifyAge(field.value);
+  field.value = '';
+
+  if (verdict === 'invalid') {
+    setText(qs('#age-gate-error'), 'Enter your date of birth as a real date in the past.');
+    return;
+  }
+
+  const username = qs('#signup-username').value.trim();
+  const password = qs('#signup-password').value;
+  closeAgeGate();
+
+  if (verdict === 'eligible') {
+    await enterCasino(() => api.signUp(username, password));
+    return;
+  }
+
+  // Under age: no account is created, and they are seated as a guest instead of turned away.
+  await enterCasino(() => api.playAsGuest());
+  toast(`You must be ${LEGAL_AGE} or over to hold an account, so you are playing as a guest. `
+    + 'Nothing is saved and your chips reset with your session.', 'error');
 });
 
 async function enterCasino(signIn) {
@@ -168,6 +241,15 @@ function applyPasswordPolicy() {
     setText(node, `At least ${min} characters.`);
   }
 }
+
+/** States the age rule from the one figure the check itself uses. */
+function applyAgePolicy() {
+  for (const node of qsa('.age-rule')) {
+    setText(node, `You must be ${LEGAL_AGE} or over to hold an account.`);
+  }
+}
+
+applyAgePolicy();
 
 async function loadConfig() {
   try {
