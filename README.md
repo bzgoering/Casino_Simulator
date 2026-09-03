@@ -4,17 +4,16 @@ A fun casino web app with three games: **blackjack**, **slots** and **roulette**
 
 You can play either way:
 
-- **Signed out**, as a guest — hit *Play as guest* and you get **$10,000** in chips to mess about
+- **Signed out**, as a guest: hit *Play as guest* and you get **$10,000** in chips to mess about
   with straight away. Nothing about a guest is saved: no account, no history, and the chips reset
   when the session ends.
-- **Signed in**, with an account — sign up and you start with **$100**, your balance and full
+- **Signed in**, with an account: sign up and you start with **$100**, your balance and full
   history are kept between visits, and you can manage the account from the page behind your
   username.
 
 Signing up asks you to confirm your age first: an account is for **21 and over**, and anyone
 younger is seated as a guest instead of being turned away. The date of birth is checked in the
-browser and discarded on the spot — it is never sent to the server and never stored, so the only
-thing that outlives the question is which of the two doors above you came through.
+browser and discarded on the spot, no personal data will be kept at this time. 
 
 > **Play money only.** Nothing here touches real currency or real payments. There is no cashier:
 > the deposit and withdraw buttons on the account page are deliberately dead, and are there only
