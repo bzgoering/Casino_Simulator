@@ -170,7 +170,7 @@ export function createBlackjackView({ api, onBalance, onError, config }) {
     }
     const net = Number.parseFloat(round.net ?? '0');
     const label = net > 0 ? 'You win' : net < 0 ? 'You lose' : 'Push';
-    setText(outcome, `${label} \u2014 ${formatDelta(net)}`);
+    setText(outcome, `${label}: ${formatDelta(net)}`);
   }
 
   function cardNode(code) {

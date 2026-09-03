@@ -223,8 +223,8 @@ export function createSlotsView({ api, onBalance, onError, config }) {
     }
 
     setText(outcome, result.win
-      ? `${result.combination} — ${formatDelta(result.net)}`
-      : `No win — ${formatDelta(result.net)}`);
+      ? `${result.combination}: ${formatDelta(result.net)}`
+      : `No win: ${formatDelta(result.net)}`);
 
     clear(lineWins);
     for (const line of winners) {
