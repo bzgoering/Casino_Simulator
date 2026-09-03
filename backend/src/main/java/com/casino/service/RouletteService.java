@@ -47,7 +47,9 @@ public class RouletteService {
 
         RouletteSpinResult result = table.spin(bets);
         BigDecimal balance = wallet.credit(principal, result.totalPayout(), LedgerEntryType.PAYOUT,
-                GameType.ROULETTE, roundId, "Pocket " + result.pocket() + " " + result.color());
+                GameType.ROULETTE, roundId,
+                "Pocket " + com.casino.game.roulette.RouletteWheel.label(result.pocket())
+                        + " " + result.color());
 
         return new RouletteRound(roundId, result, balance);
     }

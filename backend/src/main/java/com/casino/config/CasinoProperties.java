@@ -34,7 +34,8 @@ public record CasinoProperties(Jwt jwt, Guest guest, Limits limits, Slots slots,
      *                            changed it
      * @param maxConfigurableBet  hard ceiling on the maximum bet an admin may set; deliberately
      *                            not adjustable through the admin console
-     * @param maxRouletteBets     most chips placeable on a single roulette spin
+     * @param maxRouletteBets     guard on the size of a spin request, not a table rule: a
+     *                            player is limited by their balance, not by a count of bets
      * @param maxBlackjackHands   most boxes one player may take in a single blackjack round
      * @param maxAdminCredit      ceiling on a single administrative credit
      */

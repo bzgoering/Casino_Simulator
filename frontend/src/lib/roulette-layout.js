@@ -6,10 +6,22 @@
  * against the same rules and is the only authority on what is placeable.
  */
 
+/**
+ * The double zero, held as 37 so a pocket stays a number here as it does on the server.
+ * It is written out as "00" by labelOf, which is the only spelling the cloth or the API uses.
+ */
+export const DOUBLE_ZERO = 37;
+
+/** The physical clockwise order of an American wheel. The two greens sit opposite each other. */
 export const POCKET_ORDER = [
-  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23,
-  10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26,
+  0, 28, 9, 26, 30, 11, 7, 20, 32, 17, 5, 22, 34, 15, 3, 24, 36, 13, 1,
+  DOUBLE_ZERO, 27, 10, 25, 29, 12, 8, 19, 31, 18, 6, 21, 33, 16, 4, 23, 35, 14, 2,
 ];
+
+/** How a pocket is written. The only place 37 becomes "00". */
+export function labelOf(pocket) {
+  return pocket === DOUBLE_ZERO ? '00' : String(pocket);
+}
 
 const RED_NUMBERS = new Set([
   1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36,
@@ -17,6 +29,9 @@ const RED_NUMBERS = new Set([
 
 export const PAYOUTS = {
   STRAIGHT: 35,
+  // The five-number bet, American cloths only. Five pockets in 38 at 6:1 is a 7.89% edge
+  // against 5.26% everywhere else, which is why it is the one bet worth naming as a bad one.
+  TOP_LINE: 6,
   SPLIT: 17,
   STREET: 11,
   CORNER: 8,
@@ -29,8 +44,12 @@ export const PAYOUTS = {
 };
 
 export function colorOf(pocket) {
-  if (pocket === 0) return 'GREEN';
+  if (pocket === 0 || pocket === DOUBLE_ZERO) return 'GREEN';
   return RED_NUMBERS.has(pocket) ? 'RED' : 'BLACK';
+}
+
+export function isGreen(pocket) {
+  return pocket === 0 || pocket === DOUBLE_ZERO;
 }
 
 export function rowOf(n) {
@@ -65,6 +84,8 @@ export function pocketsFor(type, selection) {
       return validateInside(selection, 4, isValidCorner);
     case 'SIX_LINE':
       return validateInside(selection, 6, isValidSixLine);
+    case 'TOP_LINE':
+      return validateInside(selection, 5, isValidTopLine);
     case 'COLOR':
       return selection === 'RED' || selection === 'BLACK'
         ? range(1, 36).filter((n) => colorOf(n) === selection)
@@ -105,38 +126,71 @@ function parseNumbers(selection, maxCount) {
 
   const numbers = [];
   for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed === '' || !/^\d+$/.test(trimmed)) return null;
-    const value = Number(trimmed);
-    if (value < 0 || value > 36) return null;
+    const value = parsePocket(part);
+    if (value === null) return null;
     if (numbers.includes(value)) return null;
     numbers.push(value);
   }
   return numbers.sort((a, b) => a - b);
 }
 
-function isValidSplit([low, high]) {
-  if (low === 0) return [1, 2, 3].includes(high);
+/**
+ * Reads a pocket as the cloth writes it, or null if it names none.
+ *
+ * Strict in the same two ways the server is: "37" is refused even though that is how the double
+ * zero is held, and a padded number is refused so "00" cannot be reached by any other spelling.
+ */
+export function parsePocket(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (trimmed === '00') return DOUBLE_ZERO;
+  if (!/^[0-9]{1,2}$/.test(trimmed)) return null;
+  if (trimmed.length > 1 && trimmed.startsWith('0')) return null;
+  const value = Number(trimmed);
+  return value >= 0 && value <= 36 ? value : null;
+}
+
+// The bets that touch a green, which is where an American cloth differs from a European one.
+// A green has no row or column, so the arithmetic below cannot speak for it.
+const GREEN_SPLITS = [[0, DOUBLE_ZERO], [0, 1], [0, 2], [2, DOUBLE_ZERO], [3, DOUBLE_ZERO]];
+const GREEN_TRIOS = [[0, 1, 2], [0, 2, DOUBLE_ZERO], [2, 3, DOUBLE_ZERO]];
+const TOP_LINE_POCKETS = [0, 1, 2, 3, DOUBLE_ZERO];
+
+function touchesGreen(numbers) {
+  return numbers.some(isGreen);
+}
+
+function isValidSplit(numbers) {
+  if (touchesGreen(numbers)) return GREEN_SPLITS.some((pair) => sameSet(numbers, pair));
+  const [low, high] = numbers;
   const sameRow = rowOf(low) === rowOf(high) && Math.abs(columnOf(low) - columnOf(high)) === 1;
   const sameColumn = columnOf(low) === columnOf(high) && Math.abs(rowOf(low) - rowOf(high)) === 1;
   return sameRow || sameColumn;
 }
 
+/** Both greens and the first street. The only bet an American cloth adds. */
+function isValidTopLine(numbers) {
+  return sameSet(numbers, TOP_LINE_POCKETS);
+}
+
 function isValidStreet(numbers) {
-  if (sameSet(numbers, [0, 1, 2]) || sameSet(numbers, [0, 2, 3])) return true;
+  if (touchesGreen(numbers)) return GREEN_TRIOS.some((trio) => sameSet(numbers, trio));
   const [first] = numbers;
   if (first < 1 || columnOf(first) !== 0) return false;
   return sameSet(numbers, [first, first + 1, first + 2]);
 }
 
 function isValidCorner(numbers) {
-  if (sameSet(numbers, [0, 1, 2, 3])) return true;
+  // No green corner here: the European 0-1-2-3 basket paid 8:1, and on this cloth those
+  // pockets are the five-number bet at 6:1 instead.
+  if (touchesGreen(numbers)) return false;
   const [topLeft] = numbers;
   if (topLeft < 1 || columnOf(topLeft) === 2 || rowOf(topLeft) >= 11) return false;
   return sameSet(numbers, [topLeft, topLeft + 1, topLeft + 3, topLeft + 4]);
 }
 
 function isValidSixLine(numbers) {
+  if (touchesGreen(numbers)) return false;
   const [first] = numbers;
   if (first < 1 || columnOf(first) !== 0 || rowOf(first) >= 11) return false;
   return sameSet(numbers, range(first, first + 5));

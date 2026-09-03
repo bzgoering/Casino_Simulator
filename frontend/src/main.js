@@ -30,7 +30,6 @@ function currentConfig(game) {
     game,
     minBet: limits ? Number(limits.minBet) : undefined,
     maxBet: limits ? Number(limits.maxBet) : undefined,
-    maxRouletteBets: tableConfig?.maxRouletteBets,
     balance: balance === null || balance === undefined ? undefined : Number(balance),
     blackjack: tableConfig?.blackjack,
     slots: tableConfig?.slots,
@@ -297,13 +296,12 @@ function renderFloor() {
   setText(qs('#floor-blackjack-detail'),
     `${tableConfig.blackjack.decks} decks \u00b7 pays ${tableConfig.blackjack.blackjackPays}`);
   setText(qs('#floor-slots-detail'), `3 reels \u00b7 ${tableConfig.slots.rtp}% RTP`);
-  setText(qs('#floor-roulette-detail'), 'Single zero \u00b7 2.70% edge');
+  setText(qs('#floor-roulette-detail'), 'Double zero \u00b7 5.26% edge');
 
   const panel = qs('#odds-panel');
   clear(panel);
   panel.append(el('p', {
-    text: `Table limits ${gameLimitsSummary()} `
-      + `\u00b7 up to ${tableConfig.maxRouletteBets} bets per roulette spin.`,
+    text: `Table limits ${gameLimitsSummary()}.`,
   }));
   panel.append(el('p', {
     text: 'Every outcome is decided on the server using a cryptographic random source. '

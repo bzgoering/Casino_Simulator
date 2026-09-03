@@ -20,8 +20,10 @@ browser and discarded on the spot, no personal data will be kept at this time.
 > to show where they would sit in a real product.
 
 Every outcome is decided on the server from a cryptographic random source, and the odds are the
-real published ones — single-zero roulette at a 2.7% house edge, a 96% return on the slots, and
-blackjack paying 3:2 off an eight-deck shoe.
+real published ones: American double-zero roulette at a 5.26% house edge, a 96% return on the
+slots, and blackjack paying 3:2 off an eight-deck shoe. One bet is priced apart from the rest,
+roulette's five-number 0-00-1-2-3, which pays 6:1 and so runs at 7.89%. That is what a real
+table charges for it, and it is the worst bet on the cloth.
 
 ---
 
@@ -40,7 +42,7 @@ Before the first run, open `.env` and set two values:
 
 | Variable | What to put |
 |---|---|
-| `POSTGRES_PASSWORD` | any password you like — it is only used between the containers |
+| `POSTGRES_PASSWORD` | any password you like; it is only used between the containers |
 | `CASINO_JWT_SECRET` | a random string of **at least 32 characters** |
 
 Neither has a working default; the backend refuses to start without a JWT secret. To generate one:
@@ -96,6 +98,6 @@ npm run dev
 ## Tests
 
 ```bash
-cd backend  && ./mvnw test      # 180 tests
-cd frontend && npm test         # 82 tests
+cd backend  && ./mvnw test      # 189 tests
+cd frontend && npm test         # 168 tests
 ```

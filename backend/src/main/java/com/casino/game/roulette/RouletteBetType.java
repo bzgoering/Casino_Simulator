@@ -1,11 +1,19 @@
 package com.casino.game.roulette;
 
 /**
- * The bets available on a European layout, with the payout each returns on top of the stake.
+ * The bets available on an American layout, with the payout each returns on top of the stake.
  *
- * <p>Every payout here is priced against 36 numbers while the wheel has 37 pockets, giving the
- * uniform 2.70% house edge. {@code selectionSize} is the exact number of pockets an inside bet
- * must name, and is enforced when the bet is built.
+ * <p>These odds are the same ones a European table pays. That is the whole point of a
+ * double-zero wheel: the payouts stay priced against 36 numbers while the wheel holds 38
+ * pockets, so the extra green is taken straight out of the player's return. The edge is
+ * 2/38 = 5.26% rather than 1/37 = 2.70%, and no number on this enum had to move for that.
+ *
+ * <p>{@link #TOP_LINE} is the exception, and the only bet an American cloth adds. Five pockets
+ * paying 6:1 comes out at 7.89%, half again worse than everything else here. It is a famously
+ * bad bet, and it is priced exactly as a real table prices it.
+ *
+ * <p>{@code selectionSize} is the exact number of pockets an inside bet must name, and is
+ * enforced when the bet is built.
  */
 public enum RouletteBetType {
 
@@ -19,6 +27,8 @@ public enum RouletteBetType {
     CORNER(8, 4),
     /** Two adjacent streets, 5:1. */
     SIX_LINE(5, 6),
+    /** The five-number bet, 0-00-1-2-3, 6:1. American cloths only, and the worst bet on one. */
+    TOP_LINE(6, 5),
     /** One of the three columns of twelve, 2:1. */
     COLUMN(2, 12),
     /** 1-12, 13-24 or 25-36, 2:1. */
@@ -49,6 +59,7 @@ public enum RouletteBetType {
 
     /** Inside bets name their pockets explicitly; outside bets are named by a keyword instead. */
     public boolean isInsideBet() {
-        return this == STRAIGHT || this == SPLIT || this == STREET || this == CORNER || this == SIX_LINE;
+        return this == STRAIGHT || this == SPLIT || this == STREET || this == CORNER
+                || this == SIX_LINE || this == TOP_LINE;
     }
 }

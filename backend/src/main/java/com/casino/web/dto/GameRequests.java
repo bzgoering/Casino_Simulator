@@ -98,7 +98,9 @@ public final class GameRequests {
     /** Every chip placed before a single spin. */
     public record RouletteSpinRequest(
             @NotEmpty(message = "Place at least one bet before spinning.")
-            @Size(max = 32, message = "Too many bets on one spin.")
+            // Not a table rule: see BetValidator.validateRouletteBetCount. Sized above every
+            // bet an American cloth can print, so only a forged request can meet it.
+            @Size(max = 512, message = "That is more bets than a cloth can hold.")
             @Valid
             List<RouletteBetRequest> bets) {
     }

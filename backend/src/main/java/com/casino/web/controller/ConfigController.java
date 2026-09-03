@@ -73,9 +73,9 @@ public class ConfigController {
             roulettePayouts.put(type.name(), type.payoutToOne());
         }
         var rouletteInfo = new ConfigResponse.RouletteInfo(
-                RouletteWheel.POCKET_ORDER,
+                RouletteWheel.POCKET_ORDER.stream().map(RouletteWheel::label).toList(),
                 roulettePayouts,
-                100.0 / RouletteWheel.POCKET_COUNT,
+                100.0 * RouletteWheel.GREEN_POCKETS / RouletteWheel.POCKET_COUNT,
                 rouletteLimits.min(),
                 rouletteLimits.max());
 

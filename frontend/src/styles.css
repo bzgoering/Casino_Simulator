@@ -347,8 +347,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 .wheel-area { text-align: center; }
 
+/* The frame holds still while the wheel inside it turns, which is what gives the marker
+   something to be pinned to. */
+.wheel-frame { position: relative; width: 220px; margin: 0 auto; }
+
 .wheel {
-  width: 220px; height: 220px; margin: 0 auto; border-radius: 50%;
+  width: 220px; height: 220px; border-radius: 50%;
   border: 8px solid #6b4a25;
   background: conic-gradient(var(--felt) 0deg 360deg);
   position: relative; box-shadow: var(--shadow);
@@ -358,9 +362,21 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   content: ""; position: absolute; inset: 38%;
   background: #6b4a25; border-radius: 50%;
 }
+
+/* Each number is pushed out to the rim along its own wedge by an inline transform, so only the
+   things every number shares belong here. */
+.wheel-number {
+  position: absolute; left: 50%; top: 50%;
+  font-size: 9px; font-weight: 700; line-height: 1; color: #fff;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 70%);
+  pointer-events: none;
+}
+
+/* Outside the wheel in the markup, so it stays put while the wheel turns under it. */
 .wheel-marker {
-  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
-  color: var(--gold); font-size: 1.2rem;
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  color: var(--gold); font-size: 1.2rem; line-height: 1; z-index: 2;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
 }
 
 .result-pocket { font-size: 1.6rem; font-weight: 700; min-height: 2.2rem; margin: 1rem 0 .5rem; }
@@ -415,14 +431,16 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   outline: 3px solid var(--gold); outline-offset: 2px; transform: translateY(-3px);
 }
 
-/* Three columns of numbers, with the column bets closing off the foot of each. */
+/* Six tracks rather than three, so the head of the cloth can carry two half-width greens
+   over three columns of numbers. A number spans two tracks, a green spans three. */
 .cloth {
   display: grid; gap: 3px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: var(--felt-dark); padding: 6px; border-radius: var(--radius);
 }
 
 .cell {
+  grid-column: span 2;
   position: relative;
   background: var(--felt); color: #fff; border: 1px solid #0a2e1d;
   /* Room under the label for the chips to sit on, so a pile never covers its own number. */
@@ -433,8 +451,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .cell:hover { outline: 2px solid var(--gold); }
 .cell.RED { background: var(--red); }
 .cell.BLACK { background: #1c1f26; }
-.cell.GREEN { background: var(--green); grid-column: 1 / -1; }
+.cell.GREEN { background: var(--green); }
+/* Two of them share the head of the cloth, so each takes half of the six tracks. */
+.cell.zero { grid-column: span 3; }
 .cell.outside { background: var(--felt); font-size: .8rem; }
+/* The five-number bet runs the full width, under the columns and above the dozens. */
+.cell.top-line { grid-column: span 6; font-size: .72rem; letter-spacing: .02em; }
 .cell.winner { animation: flash .5s ease-in-out 3; }
 
 .cloth-hint { text-align: center; margin: .6rem 0 0; }
@@ -477,6 +499,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .placed li.won { color: #6ee7a8; }
 .placed li.lost { color: var(--muted); }
+
+/* The outcome in words beside the row's colour, since colour alone says nothing to a reader
+   who cannot see it. The potential pay keeps its own place at the end of the row. */
+.bet-outcome {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+  align-self: center; opacity: .85;
+}
 .bet-actions { display: flex; gap: .5rem; }
 .bet-actions .primary { margin-top: 0; }
 

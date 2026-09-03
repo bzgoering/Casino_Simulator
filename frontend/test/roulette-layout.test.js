@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  POCKET_ORDER, colorOf, pocketsFor, isPlaceable, payoutFor, layoutGrid,
+  POCKET_ORDER, DOUBLE_ZERO, colorOf, labelOf, parsePocket,
+  pocketsFor, isPlaceable, payoutFor, layoutGrid,
 } from '../src/lib/roulette-layout.js';
 
 /**
@@ -9,16 +10,18 @@ import {
  * rather than a way to win money.
  */
 describe('the wheel', () => {
-  it('is a single-zero European wheel of 37 pockets', () => {
-    expect(POCKET_ORDER).toHaveLength(37);
-    expect(new Set(POCKET_ORDER).size).toBe(37);
+  it('is a double-zero American wheel of 38 pockets', () => {
+    expect(POCKET_ORDER).toHaveLength(38);
+    expect(new Set(POCKET_ORDER).size).toBe(38);
     expect(POCKET_ORDER).toContain(0);
-    expect(POCKET_ORDER).not.toContain(37);
+    expect(POCKET_ORDER).toContain(DOUBLE_ZERO);
   });
 
   it('matches the physical pocket sequence used by the server', () => {
-    expect(POCKET_ORDER.slice(0, 6)).toEqual([0, 32, 15, 19, 4, 21]);
-    expect(POCKET_ORDER.at(-1)).toBe(26);
+    expect(POCKET_ORDER.slice(0, 6)).toEqual([0, 28, 9, 26, 30, 11]);
+    expect(POCKET_ORDER.at(-1)).toBe(2);
+    // The greens sit opposite each other on a real American wheel.
+    expect(POCKET_ORDER.indexOf(DOUBLE_ZERO)).toBe(19);
   });
 
   it('splits 18 red and 18 black with a green zero', () => {
@@ -59,17 +62,52 @@ describe('resolving a bet to its pockets', () => {
     expect(pocketsFor('SPLIT', '1,36')).toBeNull();
   });
 
+  it('accepts the green splits an American cloth prints, and only those', () => {
+    expect(pocketsFor('SPLIT', '0,00')).toEqual([0, DOUBLE_ZERO]);
+    expect(pocketsFor('SPLIT', '0,1')).toEqual([0, 1]);
+    expect(pocketsFor('SPLIT', '0,2')).toEqual([0, 2]);
+    expect(pocketsFor('SPLIT', '00,2')).toEqual([2, DOUBLE_ZERO]);
+    expect(pocketsFor('SPLIT', '00,3')).toEqual([3, DOUBLE_ZERO]);
+
+    // The two greens are not interchangeable: 0 does not touch 3, nor 00 touch 1.
+    expect(pocketsFor('SPLIT', '0,3')).toBeNull();
+    expect(pocketsFor('SPLIT', '00,1')).toBeNull();
+  });
+
+  it('writes and reads the double zero as 00, and never as 37', () => {
+    expect(labelOf(DOUBLE_ZERO)).toBe('00');
+    expect(labelOf(0)).toBe('0');
+    expect(parsePocket('00')).toBe(DOUBLE_ZERO);
+    expect(parsePocket('0')).toBe(0);
+
+    // 37 is how it is held, not a name it answers to; padding must not alias either.
+    expect(parsePocket('37')).toBeNull();
+    expect(parsePocket('000')).toBeNull();
+    expect(parsePocket('017')).toBeNull();
+  });
+
   it('accepts a printed row as a street and rejects anything else', () => {
     expect(pocketsFor('STREET', '1,2,3')).toEqual([1, 2, 3]);
     expect(pocketsFor('STREET', '0,1,2')).toEqual([0, 1, 2]);
+    expect(pocketsFor('STREET', '00,2,3')).toEqual([2, 3, DOUBLE_ZERO]);
+    expect(pocketsFor('STREET', '0,00,2')).toEqual([0, 2, DOUBLE_ZERO]);
     expect(pocketsFor('STREET', '2,3,4')).toBeNull();
+    // The European 0-2-3 trio is not printed on this cloth.
+    expect(pocketsFor('STREET', '0,2,3')).toBeNull();
   });
 
   it('accepts a square as a corner and rejects a line of four', () => {
     expect(pocketsFor('CORNER', '1,2,4,5')).toEqual([1, 2, 4, 5]);
-    expect(pocketsFor('CORNER', '0,1,2,3')).toEqual([0, 1, 2, 3]);
     expect(pocketsFor('CORNER', '1,2,3,4')).toBeNull();
     expect(pocketsFor('CORNER', '3,4,6,7')).toBeNull();
+    // The European basket paid 8:1 and is not a bet here; those pockets are the five number.
+    expect(pocketsFor('CORNER', '0,1,2,3')).toBeNull();
+  });
+
+  it('accepts the five-number bet, and nothing else shaped like it', () => {
+    expect(pocketsFor('TOP_LINE', '0,00,1,2,3')).toEqual([0, 1, 2, 3, DOUBLE_ZERO]);
+    expect(pocketsFor('TOP_LINE', '1,2,3,4,5')).toBeNull();
+    expect(pocketsFor('TOP_LINE', '0,1,2,3,4')).toBeNull();
   });
 
   it('accepts two adjacent streets as a six line', () => {
@@ -119,6 +157,7 @@ describe('resolving a bet to its pockets', () => {
 
   it('rejects numbers that are not on the wheel', () => {
     expect(pocketsFor('STRAIGHT', '37')).toBeNull();
+    expect(pocketsFor('STRAIGHT', '38')).toBeNull();
     expect(pocketsFor('STRAIGHT', '-1')).toBeNull();
     expect(pocketsFor('STRAIGHT', '999')).toBeNull();
   });
@@ -157,13 +196,24 @@ describe('payouts', () => {
     expect(payoutFor('DOZEN', 5)).toBe(15);
   });
 
-  it('carries the same 2.70% house edge on every bet type', () => {
+  it('carries the same 5.26% house edge on every bet but the five number', () => {
     const types = ['STRAIGHT', 'SPLIT', 'STREET', 'CORNER', 'SIX_LINE', 'COLUMN', 'DOZEN', 'COLOR', 'PARITY', 'HALF'];
     for (const type of types) {
       const covered = pocketsFor(type, sampleSelection(type)).length;
-      const edge = 1 - (covered / 37) * (payoutFor(type, 1));
-      expect(edge, type).toBeCloseTo(0.027027, 5);
+      // The payouts are unchanged from a European table; the second green is the whole of
+      // the difference between a 2.70% edge and this one.
+      const edge = 1 - (covered / 38) * (payoutFor(type, 1));
+      expect(edge, type).toBeCloseTo(0.052632, 5);
     }
+  });
+
+  it('prices the five-number bet worse than everything else, as a real table does', () => {
+    const covered = pocketsFor('TOP_LINE', '0,00,1,2,3').length;
+    const edge = 1 - (covered / 38) * payoutFor('TOP_LINE', 1);
+
+    expect(covered).toBe(5);
+    expect(payoutFor('TOP_LINE', 1)).toBe(7);
+    expect(edge).toBeCloseTo(0.078947, 5);
   });
 });
 

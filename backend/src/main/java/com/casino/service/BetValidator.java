@@ -156,13 +156,20 @@ public class BetValidator {
         return stake;
     }
 
-    /** Roulette allows many chips on one spin; the count and the total are both capped. */
+    /**
+     * Roulette puts no rule on how many spaces a player may cover: what they can afford is the
+     * limit, and the wallet enforces that when the stake is debited.
+     *
+     * <p>The ceiling that remains is a guard on the request, not a rule of the table. Every
+     * distinct bet an American cloth can print comes to well under two hundred, so no amount of
+     * clicking reaches this; it is here so an unbounded array cannot be posted at the server.
+     */
     public void validateRouletteBetCount(int count) {
         if (count < 1) {
             throw CasinoException.badRequest("No bets placed.");
         }
         if (count > maxRouletteBets) {
-            throw CasinoException.badRequest("At most " + maxRouletteBets + " bets.");
+            throw CasinoException.badRequest("That is more bets than a cloth can hold.");
         }
     }
 

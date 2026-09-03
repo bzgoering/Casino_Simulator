@@ -170,7 +170,12 @@
 
         <div class="roulette-layout">
           <div class="wheel-area">
-            <div class="wheel" id="roulette-wheel" aria-hidden="true"></div>
+            <!-- The marker is a sibling of the wheel, not a child of it: it points at the
+                 pocket that came up, so it must not turn with the thing it is pointing at. -->
+            <div class="wheel-frame">
+              <div class="wheel" id="roulette-wheel" aria-hidden="true"></div>
+              <span class="wheel-marker" aria-hidden="true">&#9660;</span>
+            </div>
             <p class="result-pocket" id="roulette-result" role="status" aria-live="polite"></p>
             <ul class="recent" id="roulette-recent" aria-label="Recent results"></ul>
 

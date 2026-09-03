@@ -13,12 +13,41 @@ import java.util.TreeSet;
  * any money moves.
  *
  * <p>The cloth runs 1-36 in twelve rows of three: number {@code n} sits at
- * row {@code (n-1)/3}, column {@code (n-1)%3}.
+ * row {@code (n-1)/3}, column {@code (n-1)%3}. The two greens sit side by side above it.
+ *
+ * <p>The greens are where an American cloth parts company with a European one, and the
+ * difference is not decorative. There is no 0-1-2-3 corner here, because 00 stands between the
+ * zero and the top of the grid; in its place is the five-number 0-00-1-2-3, which pays 6:1
+ * rather than the 8:1 that corner paid. Accepting a European basket on this cloth would be
+ * paying 8:1 on a bet the table prices at 6:1, so the old case is gone rather than loosened.
  */
 public final class RouletteLayout {
 
     public static final int ROWS = 12;
     public static final int COLUMNS = 3;
+
+    private static final int DOUBLE_ZERO = RouletteWheel.DOUBLE_ZERO;
+
+    /** Every two-pocket bet that touches a green, as printed on an American cloth. */
+    private static final Set<Set<Integer>> GREEN_SPLITS = Set.of(
+            Set.of(0, DOUBLE_ZERO),
+            Set.of(0, 1),
+            Set.of(0, 2),
+            Set.of(DOUBLE_ZERO, 2),
+            Set.of(DOUBLE_ZERO, 3));
+
+    /** Every three-pocket bet that touches a green. */
+    private static final Set<Set<Integer>> GREEN_TRIOS = Set.of(
+            Set.of(0, 1, 2),
+            Set.of(0, DOUBLE_ZERO, 2),
+            Set.of(DOUBLE_ZERO, 2, 3));
+
+    /** The five-number bet, the only green bet wider than a trio on this cloth. */
+    private static final Set<Integer> TOP_LINE = Set.of(0, DOUBLE_ZERO, 1, 2, 3);
+
+    private static boolean touchesGreen(Set<Integer> numbers) {
+        return numbers.stream().anyMatch(RouletteWheel::isGreen);
+    }
 
     private RouletteLayout() {
     }
@@ -31,31 +60,31 @@ public final class RouletteLayout {
         return (number - 1) % COLUMNS;
     }
 
-    /** True when the two numbers share an edge on the cloth, including the zero splits. */
+    /** True when the two numbers share an edge on the cloth, the green splits included. */
     public static boolean isValidSplit(Set<Integer> numbers) {
         if (numbers.size() != 2) {
             return false;
+        }
+        // A green has no row or column, so the arithmetic below cannot speak for it.
+        if (touchesGreen(numbers)) {
+            return GREEN_SPLITS.contains(numbers);
         }
         var sorted = new TreeSet<>(numbers);
         int low = sorted.first();
         int high = sorted.last();
 
-        // 0 is adjacent to 1, 2 and 3 on a European cloth.
-        if (low == 0) {
-            return high == 1 || high == 2 || high == 3;
-        }
         boolean sameRowAdjacent = rowOf(low) == rowOf(high) && Math.abs(columnOf(low) - columnOf(high)) == 1;
         boolean sameColumnAdjacent = columnOf(low) == columnOf(high) && Math.abs(rowOf(low) - rowOf(high)) == 1;
         return sameRowAdjacent || sameColumnAdjacent;
     }
 
-    /** A row of three, or one of the two trios that include the zero. */
+    /** A row of three, or one of the three trios that include a green. */
     public static boolean isValidStreet(Set<Integer> numbers) {
         if (numbers.size() != 3) {
             return false;
         }
-        if (numbers.equals(Set.of(0, 1, 2)) || numbers.equals(Set.of(0, 2, 3))) {
-            return true;
+        if (touchesGreen(numbers)) {
+            return GREEN_TRIOS.contains(numbers);
         }
         var sorted = new TreeSet<>(numbers);
         int first = sorted.first();
@@ -65,13 +94,16 @@ public final class RouletteLayout {
         return numbers.equals(Set.of(first, first + 1, first + 2));
     }
 
-    /** A square of four, or the 0-1-2-3 basket. */
+    /**
+     * A square of four.
+     *
+     * <p>No green corner exists here. The European 0-1-2-3 basket paid 8:1; on this cloth those
+     * pockets are part of the five-number bet at 6:1 instead, so honouring the old shape would
+     * be overpaying a bet the table does not offer.
+     */
     public static boolean isValidCorner(Set<Integer> numbers) {
-        if (numbers.size() != 4) {
+        if (numbers.size() != 4 || touchesGreen(numbers)) {
             return false;
-        }
-        if (numbers.equals(Set.of(0, 1, 2, 3))) {
-            return true;
         }
         var sorted = new TreeSet<>(numbers);
         int topLeft = sorted.first();
@@ -81,9 +113,14 @@ public final class RouletteLayout {
         return numbers.equals(Set.of(topLeft, topLeft + 1, topLeft + 3, topLeft + 4));
     }
 
+    /** The five-number bet: both greens and the first street, and nothing else. */
+    public static boolean isValidTopLine(Set<Integer> numbers) {
+        return TOP_LINE.equals(numbers);
+    }
+
     /** Two adjacent streets, six numbers starting at the left column. */
     public static boolean isValidSixLine(Set<Integer> numbers) {
-        if (numbers.size() != 6) {
+        if (numbers.size() != 6 || touchesGreen(numbers)) {
             return false;
         }
         var sorted = new TreeSet<>(numbers);

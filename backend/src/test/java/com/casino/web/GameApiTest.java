@@ -169,9 +169,10 @@ class GameApiTest extends ApiTestSupport {
                     ]}
                     """, token));
 
-            assertThat(result.get("pocket").asInt()).isBetween(0, 36);
+            // A pocket travels as it is written on the cloth, so "00" survives the trip.
+            assertThat(result.get("pocket").asText()).matches("00|[0-9]{1,2}");
             assertThat(result.get("color").asText()).isIn("RED", "BLACK", "GREEN");
-            assertThat(result.get("wheelIndex").asInt()).isBetween(0, 36);
+            assertThat(result.get("wheelIndex").asInt()).isBetween(0, 37);
             assertThat(result.get("bets")).hasSize(2);
             assertThat(result.get("totalStaked").decimalValue()).isEqualByComparingTo("15.00");
         }
@@ -194,9 +195,81 @@ class GameApiTest extends ApiTestSupport {
             String token = token(guestSession());
 
             mvc.perform(postJson("/api/games/roulette/spin", """
-                            {"bets":[{"type":"STRAIGHT","selection":"37","amount":10.00}]}
+                            {"bets":[{"type":"STRAIGHT","selection":"38","amount":10.00}]}
                             """, token))
                     .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("the double zero is bettable, and only by the name the cloth gives it")
+        void doubleZeroIsBettableAsZeroZero() throws Exception {
+            String token = token(guestSession());
+
+            JsonNode result = perform(postJson("/api/games/roulette/spin", """
+                    {"bets":[{"type":"STRAIGHT","selection":"00","amount":1.00}]}
+                    """, token));
+            assertThat(result.get("bets").get(0).get("selection").asText()).isEqualTo("00");
+
+            // 37 is how the double zero is held internally. It must not be a way to bet it.
+            mvc.perform(postJson("/api/games/roulette/spin", """
+                            {"bets":[{"type":"STRAIGHT","selection":"37","amount":1.00}]}
+                            """, token))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("the five-number bet is accepted and paid at 6 to 1")
+        void topLineIsAcceptedAndPaidAtSixToOne() throws Exception {
+            String token = token(guestSession());
+
+            for (int spin = 0; spin < 60; spin++) {
+                JsonNode result = perform(postJson("/api/games/roulette/spin", """
+                        {"bets":[{"type":"TOP_LINE","selection":"0,00,1,2,3","amount":1.00}]}
+                        """, token));
+
+                if (result.get("bets").get(0).get("won").asBoolean()) {
+                    assertThat(result.get("pocket").asText()).isIn("0", "00", "1", "2", "3");
+                    assertThat(result.get("totalPayout").decimalValue())
+                            .isEqualByComparingTo("7.00");
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("the European basket is refused: it is not a bet on this cloth")
+        void europeanBasketRefused() throws Exception {
+            String token = token(guestSession());
+
+            // 0-1-2-3 paid 8:1 on a single-zero cloth. Here those pockets are the five-number
+            // bet at 6:1, so honouring the old shape would overpay it.
+            mvc.perform(postJson("/api/games/roulette/spin", """
+                            {"bets":[{"type":"CORNER","selection":"0,1,2,3","amount":10.00}]}
+                            """, token))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("a player may cover as many spaces as they can afford")
+        void noCapOnHowManySpacesAreCovered() throws Exception {
+            String token = token(guestSession());
+
+            // Every number on the cloth at once: 38 bets, well past the 20 that used to be the
+            // rule. A guest holds 10,000, so 38 is affordable and must be allowed.
+            var bets = new StringBuilder();
+            for (int n = 0; n <= 36; n++) {
+                bets.append(bets.isEmpty() ? "" : ",")
+                        .append("{\"type\":\"STRAIGHT\",\"selection\":\"").append(n)
+                        .append("\",\"amount\":1.00}");
+            }
+            bets.append(",{\"type\":\"STRAIGHT\",\"selection\":\"00\",\"amount\":1.00}");
+
+            JsonNode result = perform(postJson(
+                    "/api/games/roulette/spin", "{\"bets\":[" + bets + "]}", token));
+
+            assertThat(result.get("bets")).hasSize(38);
+            assertThat(result.get("totalStaked").decimalValue()).isEqualByComparingTo("38.00");
+            // Every pocket is covered, so exactly one bet wins and pays 35 plus its stake.
+            assertThat(result.get("totalPayout").decimalValue()).isEqualByComparingTo("36.00");
         }
 
         @Test
@@ -211,16 +284,19 @@ class GameApiTest extends ApiTestSupport {
         }
 
         @Test
-        @DisplayName("more chips than the table allows are refused")
+        @DisplayName("a forged spin with an absurd number of bets is refused")
         void tooManyBetsRefused() throws Exception {
             String token = token(guestSession());
 
+            // There is no table rule on how many spaces a player covers any more, so this is
+            // only the guard against an unbounded array. It sits far above anything the cloth
+            // can produce, which is why it takes a forged request to reach it.
             StringBuilder bets = new StringBuilder();
-            for (int i = 0; i < 25; i++) {
+            for (int i = 0; i < 513; i++) {
                 if (i > 0) {
                     bets.append(",");
                 }
-                bets.append("{\"type\":\"STRAIGHT\",\"selection\":\"").append(i).append("\",\"amount\":1.00}");
+                bets.append("{\"type\":\"STRAIGHT\",\"selection\":\"17\",\"amount\":1.00}");
             }
 
             mvc.perform(postJson("/api/games/roulette/spin",
@@ -244,10 +320,10 @@ class GameApiTest extends ApiTestSupport {
                 BigDecimal payout = result.get("totalPayout").decimalValue();
 
                 if (won) {
-                    assertThat(result.get("pocket").asInt()).isEqualTo(17);
+                    assertThat(result.get("pocket").asText()).isEqualTo("17");
                     assertThat(payout).isEqualByComparingTo("36.00");
                 } else {
-                    assertThat(result.get("pocket").asInt()).isNotEqualTo(17);
+                    assertThat(result.get("pocket").asText()).isNotEqualTo("17");
                     assertThat(payout).isEqualByComparingTo("0.00");
                     sawLoss = true;
                 }

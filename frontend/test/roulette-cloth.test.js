@@ -22,8 +22,9 @@ function mountRoulette({ spinRoulette } = {}) {
     onBalance: vi.fn(),
     onError: vi.fn(),
     // Deliberately deep: several tests stack a pile worth thousands, and running out of money
-    // is not what any of them are about.
-    config: () => ({ minBet: 1, maxBet: 5000, maxRouletteBets: 20, balance: 100000 }),
+    // is not what any of them are about. No bet-count limit is passed at all any more, because
+    // what a player can afford is the only rule left.
+    config: () => ({ minBet: 1, maxBet: 5000, balance: 100000 }),
   });
 }
 
@@ -63,11 +64,32 @@ describe('the roulette cloth', () => {
     expect(listed[0]).toContain('Column 2');
   });
 
-  it('still draws every number and the zero', () => {
+  it('still draws every number and both greens', () => {
     const straights = [...document.querySelectorAll('#roulette-cloth [data-type="STRAIGHT"]')];
 
-    expect(straights).toHaveLength(37);
+    expect(straights).toHaveLength(38);
     expect(straights[0].dataset.selection).toBe('0');
+    expect(straights[1].dataset.selection).toBe('00');
+  });
+
+  it('prints the five-number bet with the price that makes it a bad one', () => {
+    const topLine = document.querySelector('#roulette-cloth [data-type="TOP_LINE"]');
+
+    expect(topLine).not.toBeNull();
+    expect(topLine.dataset.selection).toBe('0,00,1,2,3');
+    expect(topLine.textContent).toContain('6:1');
+  });
+
+  it('lets a player cover as many spaces as they like', () => {
+    // There used to be a cap of 20. Covering every space on the cloth must now just work.
+    const spaces = [...document.querySelectorAll('#roulette-cloth .cell')];
+    for (const space of spaces) space.click();
+
+    expect(document.querySelectorAll('#roulette-bets li')).toHaveLength(spaces.length);
+    expect(spaces.length).toBeGreaterThan(20);
+    for (const space of spaces) {
+      expect(space.querySelectorAll('.chip-token').length, space.dataset.selection).toBe(1);
+    }
   });
 
   it('puts the bets list under the wheel and the actions beside the chips', () => {

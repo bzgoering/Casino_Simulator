@@ -1,6 +1,8 @@
 import { el, clear, setText, qs, qsa } from '../lib/dom.js';
 import { formatMoney, formatDelta, validateBet } from '../lib/money.js';
-import { POCKET_ORDER, colorOf, layoutGrid, pocketsFor, payoutFor } from '../lib/roulette-layout.js';
+import {
+  POCKET_ORDER, DOUBLE_ZERO, colorOf, labelOf, layoutGrid, pocketsFor, payoutFor,
+} from '../lib/roulette-layout.js';
 import { CHIP_VALUES, chipBreakdown, topChip } from '../lib/chips.js';
 
 /**
@@ -10,6 +12,9 @@ import { CHIP_VALUES, chipBreakdown, topChip } from '../lib/chips.js';
  * the server chose: the browser is told the result and then renders it, never the other way
  * round.
  */
+/** How far out from the middle the numbers sit, inside a 220px wheel with a hub at 26px. */
+const NUMBER_RADIUS = 84;
+
 export function createRouletteView({ api, onBalance, onError, config }) {
   const cloth = qs('#roulette-cloth');
   const wheel = qs('#roulette-wheel');
@@ -25,6 +30,8 @@ export function createRouletteView({ api, onBalance, onError, config }) {
   let bets = [];
   let chipValue = CHIP_VALUES[CHIP_VALUES.length - 1];
   let busy = false;
+  // Degrees the wheel has turned in total. It only ever grows: see animateTo.
+  let rotation = 0;
   const recent = [];
 
   buildWheel();
@@ -69,8 +76,19 @@ export function createRouletteView({ api, onBalance, onError, config }) {
 
   spinButton.addEventListener('click', spin);
 
-  /** Draws the wheel as coloured sectors in the real pocket order. */
+  /**
+   * Draws the wheel as coloured sectors in the real pocket order, each with its number on it.
+   *
+   * The numbers are children of the wheel, so they turn with it. The marker is not: it lives
+   * beside the wheel in the markup, because a pointer that turns with the thing it is pointing
+   * at never points at anything.
+   *
+   * A conic gradient starts at twelve o'clock and runs clockwise, so pocket i covers the wedge
+   * from i*slice, and its middle -- where its number goes, and where the marker has to find it
+   * -- sits at i*slice + slice/2 clockwise from the top.
+   */
   function buildWheel() {
+    clear(wheel);
     const slice = 360 / POCKET_ORDER.length;
     const stops = POCKET_ORDER.map((pocket, index) => {
       const shade = colorOf(pocket) === 'RED' ? '#d63b3b'
@@ -78,7 +96,19 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       return `${shade} ${index * slice}deg ${(index + 1) * slice}deg`;
     });
     wheel.style.background = `conic-gradient(${stops.join(', ')})`;
-    wheel.append(el('span', { className: 'wheel-marker', text: '\u25bc' }));
+
+    POCKET_ORDER.forEach((pocket, index) => {
+      const label = el('span', {
+        className: 'wheel-number',
+        text: labelOf(pocket),
+        attrs: { 'data-pocket': labelOf(pocket) },
+      });
+      // Out to the rim along its own wedge. Left level rather than turned to face outwards, so
+      // the pocket under the marker -- the only one anybody reads -- always ends up upright.
+      label.style.transform = 'translate(-50%, -50%) '
+        + `rotate(${(index * slice + slice / 2).toFixed(3)}deg) translateY(-${NUMBER_RADIUS}px)`;
+      wheel.append(label);
+    });
   }
 
   /**
@@ -91,7 +121,14 @@ export function createRouletteView({ api, onBalance, onError, config }) {
    */
   function buildCloth() {
     clear(cloth);
-    cloth.append(cell({ label: '0', className: 'cell GREEN', type: 'STRAIGHT', selection: '0' }));
+    // Two greens side by side, which is what a double-zero cloth opens with.
+    cloth.append(cell({ label: '0', className: 'cell GREEN zero', type: 'STRAIGHT', selection: '0' }));
+    cloth.append(cell({
+      label: labelOf(DOUBLE_ZERO),
+      className: 'cell GREEN zero',
+      type: 'STRAIGHT',
+      selection: labelOf(DOUBLE_ZERO),
+    }));
 
     for (const row of layoutGrid()) {
       for (const number of row) {
@@ -113,6 +150,16 @@ export function createRouletteView({ api, onBalance, onError, config }) {
         title: `Column ${columnNumber} (${columnNumber}, ${columnNumber + 3}, ${columnNumber + 6}, ...)`,
       }));
     }
+
+    // The five-number bet, labelled with its price because it is the worst bet on the cloth:
+    // 6:1 on five pockets in 38 is a 7.89% edge, against 5.26% on everything else here.
+    cloth.append(cell({
+      label: '0-00-1-2-3 \u00b7 6:1',
+      className: 'cell outside top-line',
+      type: 'TOP_LINE',
+      selection: `0,${labelOf(DOUBLE_ZERO)},1,2,3`,
+      title: 'Five number bet, pays 6 to 1 (the worst bet on the table)',
+    }));
 
     const outside = [
       ['1st 12', 'DOZEN', '1'], ['2nd 12', 'DOZEN', '2'], ['3rd 12', 'DOZEN', '3'],
@@ -170,10 +217,6 @@ export function createRouletteView({ api, onBalance, onError, config }) {
     }
 
     const existing = bets.find((b) => b.type === type && b.selection === selection);
-    if (!existing && bets.length >= (limits.maxRouletteBets ?? 20)) {
-      onError(`At most ${limits.maxRouletteBets ?? 20} bets.`);
-      return;
-    }
 
     if (existing) {
       existing.amount = Number((existing.amount + chipValue).toFixed(2));
@@ -218,11 +261,15 @@ export function createRouletteView({ api, onBalance, onError, config }) {
         className: status,
         children: [
           el('span', { text: `${describeBet(bet)} \u00b7 ${formatMoney(bet.amount)}` }),
-          el('span', {
-            text: result
-              ? (result.won ? `+${formatMoney(result.payout)}` : '\u2014')
-              : `pays ${formatMoney(payoutFor(bet.type, bet.amount))}`,
-          }),
+          // Won or lost said in words, not just in the colour of the row.
+          result ? el('span', {
+            className: 'bet-outcome',
+            text: result.won ? 'Won' : 'Lost',
+          }) : null,
+          // Always what the chips on that space would return. A settled bet stays on the cloth
+          // for the next spin, so the figure it is riding on has to stay legible: replacing it
+          // with the last result left a standing bet quoting nothing at all.
+          el('span', { text: `pays ${formatMoney(payoutFor(bet.type, bet.amount))}` }),
         ],
       }));
     }
@@ -237,6 +284,7 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       STREET: `Street ${bet.selection}`,
       CORNER: `Corner ${bet.selection}`,
       SIX_LINE: `Six line ${bet.selection}`,
+      TOP_LINE: 'Five number 0-00-1-2-3',
       COLUMN: `Column ${bet.selection}`,
       DOZEN: `Dozen ${bet.selection}`,
       COLOR: bet.selection === 'RED' ? 'Red' : 'Black',
@@ -295,6 +343,13 @@ export function createRouletteView({ api, onBalance, onError, config }) {
     clearButton.disabled = true;
     setText(resultNode, '');
 
+    // Back to the pending state before the wheel starts. Without this the bets keep last
+    // round's won and lost against them, so a player spinning the same bets again never sees
+    // what the spin could pay -- and the previous winning number stays lit on the cloth
+    // through a spin it has nothing to do with.
+    renderBets();
+    renderChips();
+
     try {
       const result = await api.spinRoulette(bets);
       await animateTo(result.wheelIndex);
@@ -309,14 +364,32 @@ export function createRouletteView({ api, onBalance, onError, config }) {
     }
   }
 
-  /** Spins the wheel to the pocket the server already picked. */
+  /**
+   * Spins the wheel to the pocket the server already picked.
+   *
+   * The pocket sits at pocketAngle clockwise from the top, so for it to finish under the marker
+   * the wheel's total rotation has to come out at minus that, modulo a full turn. Any such
+   * rotation lands correctly, so this takes the first one at least five turns on from wherever
+   * the wheel already is.
+   *
+   * That "from where it already is" is the whole point. An absolute target left the second
+   * spin asking for a rotation near the one it was already sitting at: the wheel twitched a few
+   * degrees, or unwound backwards, and came to rest somewhere with no relation to the number
+   * being announced beside it.
+   */
   function animateTo(wheelIndex) {
     const slice = 360 / POCKET_ORDER.length;
-    // Several full turns so the motion reads as a spin, then land on the pocket.
-    const target = 360 * 5 - (wheelIndex * slice + slice / 2);
-    wheel.style.transform = `rotate(${target}deg)`;
+    const pocketAngle = wheelIndex * slice + slice / 2;
+
+    const landing = (((-pocketAngle) % 360) + 360) % 360;
+    const atLeast = rotation + 360 * 5;
+    rotation = landing + Math.ceil((atLeast - landing) / 360) * 360;
 
     const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    // Otherwise the wheel glides on for 3.2s after the result is already on screen.
+    wheel.style.transition = reduceMotion ? 'none' : '';
+    wheel.style.transform = `rotate(${rotation}deg)`;
+
     return new Promise((resolve) => { setTimeout(resolve, reduceMotion ? 0 : 3200); });
   }
 
@@ -337,7 +410,7 @@ export function createRouletteView({ api, onBalance, onError, config }) {
 
     renderBets(result.bets);
     for (const node of qsa('.cell', cloth)) {
-      if (node.dataset.type === 'STRAIGHT' && Number(node.dataset.selection) === result.pocket) {
+      if (node.dataset.type === 'STRAIGHT' && node.dataset.selection === String(result.pocket)) {
         node.classList.add('winner');
       }
     }
@@ -346,8 +419,9 @@ export function createRouletteView({ api, onBalance, onError, config }) {
   function describeTable(cfg) {
     if (!cfg?.roulette) return;
     setText(qs('#roulette-info'),
-      'European single zero \u00b7 37 pockets \u00b7 house edge '
-      + `${cfg.roulette.houseEdgePercent.toFixed(2)}% on every bet`);
+      'Double zero \u00b7 38 pockets \u00b7 house edge '
+      + `${cfg.roulette.houseEdgePercent.toFixed(2)}% on every bet bar the five number, `
+      + 'which runs at 7.89%');
   }
 
   return { describeTable };

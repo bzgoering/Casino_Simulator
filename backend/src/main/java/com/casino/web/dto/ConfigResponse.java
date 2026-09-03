@@ -62,10 +62,11 @@ public record ConfigResponse(
     }
 
     /**
-     * @param pocketOrder the physical wheel sequence, for drawing the wheel
+     * @param pocketOrder the physical wheel sequence as written on the cloth, so the double
+     *                    zero appears as "00" rather than the integer it is held as
      * @param payouts     bet type to odds-to-one
      */
-    public record RouletteInfo(List<Integer> pocketOrder, Map<String, Integer> payouts,
+    public record RouletteInfo(List<String> pocketOrder, Map<String, Integer> payouts,
                               double houseEdgePercent, BigDecimal minBet, BigDecimal maxBet) {
     }
 }

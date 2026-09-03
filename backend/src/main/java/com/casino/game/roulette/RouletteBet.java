@@ -29,7 +29,8 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
     /**
      * Builds and validates a bet.
      *
-     * @param selection for inside bets, comma-separated pocket numbers ("17" or "17,20");
+     * @param selection for inside bets, comma-separated pockets as written on the cloth
+     *                  ("17", "17,20", or "0,00,1,2,3" for the five-number bet);
      *                  for outside bets a keyword: RED/BLACK, ODD/EVEN, LOW/HIGH, or 1/2/3
      *                  for a dozen or column
      * @throws IllegalArgumentException if the selection is not a legal bet of that type
@@ -58,6 +59,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
             case STREET -> RouletteLayout.isValidStreet(numbers);
             case CORNER -> RouletteLayout.isValidCorner(numbers);
             case SIX_LINE -> RouletteLayout.isValidSixLine(numbers);
+            case TOP_LINE -> RouletteLayout.isValidTopLine(numbers);
             default -> false;
         };
         if (!valid) {
@@ -83,15 +85,9 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
             if (part.isBlank()) {
                 throw new IllegalArgumentException("Selection has an empty entry");
             }
-            int value;
-            try {
-                value = Integer.parseInt(part.trim());
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Selection must be whole numbers: " + part);
-            }
-            if (!RouletteWheel.isValidPocket(value)) {
-                throw new IllegalArgumentException("Not a pocket on this wheel: " + value);
-            }
+            // The wheel owns what a pocket may be called, so that "00" means the double zero
+            // and "37" -- how it happens to be held internally -- names nothing at all.
+            int value = RouletteWheel.parsePocket(part);
             if (!numbers.add(value)) {
                 throw new IllegalArgumentException("Duplicate number in selection: " + value);
             }
@@ -136,8 +132,9 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
 
     private static Set<Integer> numbersMatching(java.util.function.IntPredicate predicate) {
         Set<Integer> numbers = new HashSet<>();
-        // 0 is deliberately excluded: it loses every outside bet, which is the house edge.
-        for (int n = 1; n <= 36; n++) {
+        // Both greens are deliberately excluded: they lose every outside bet, and on this wheel
+        // there are two of them, which is exactly why the edge is 5.26% and not 2.70%.
+        for (int n = 1; n <= RouletteWheel.HIGHEST_NUMBER; n++) {
             if (predicate.test(n)) {
                 numbers.add(n);
             }
