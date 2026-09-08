@@ -1,5 +1,7 @@
 package com.casino.game.roulette;
 
+import com.casino.game.common.GameRuleException;
+
 import com.casino.game.common.Money;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -21,7 +23,7 @@ public final class RouletteTable {
 
     public RouletteSpinResult spin(List<RouletteBet> bets) {
         if (bets == null || bets.isEmpty()) {
-            throw new IllegalArgumentException("At least one bet is required");
+            throw new GameRuleException("At least one bet is required");
         }
         int pocket = wheel.spin();
 

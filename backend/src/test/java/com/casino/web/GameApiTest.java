@@ -337,6 +337,44 @@ class GameApiTest extends ApiTestSupport {
     @DisplayName("blackjack")
     class Blackjack {
 
+        /**
+         * A STAND on the round the server just dealt.
+         *
+         * <p>The round id is threaded through deliberately: the action endpoint requires it, so
+         * that a stale or replayed action cannot land on a hand it was not issued for.
+         */
+        private String stand(JsonNode dealt) {
+            return "{\"roundId\":\"" + dealt.get("roundId").asText() + "\",\"action\":\"STAND\"}";
+        }
+
+        @Test
+        @DisplayName("an action without a round id is refused rather than applied to the live hand")
+        void actionWithoutRoundIdRefused() throws Exception {
+            String token = token(guestSession());
+            perform(postJson("/api/games/blackjack/deal", """
+                    {"bet": 5.00}
+                    """, token));
+
+            mvc.perform(postJson("/api/games/blackjack/action", """
+                            {"action":"STAND"}
+                            """, token))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("an action carrying a stale round id is refused")
+        void actionWithStaleRoundIdRefused() throws Exception {
+            String token = token(guestSession());
+            perform(postJson("/api/games/blackjack/deal", """
+                    {"bet": 5.00}
+                    """, token));
+
+            mvc.perform(postJson("/api/games/blackjack/action", """
+                            {"roundId":"11111111-1111-1111-1111-111111111111","action":"STAND"}
+                            """, token))
+                    .andExpect(status().isConflict());
+        }
+
         @Test
         @DisplayName("a deal takes the stake and shows only the dealer upcard")
         void dealHidesTheHoleCard() throws Exception {
@@ -372,9 +410,8 @@ class GameApiTest extends ApiTestSupport {
                 if (!dealt.get("dealer").get("revealed").asBoolean()) {
                     assertThat(dealt.get("dealer").get("cards")).hasSize(1);
                     // Stand to finish the hand so the next deal is allowed.
-                    perform(postJson("/api/games/blackjack/action", """
-                            {"action":"STAND"}
-                            """, token));
+                    perform(postJson("/api/games/blackjack/action",
+                            stand(dealt), token));
                 }
             }
         }
@@ -466,8 +503,9 @@ class GameApiTest extends ApiTestSupport {
         void actionWithoutHandRefused() throws Exception {
             String token = token(guestSession());
 
-            mvc.perform(postJson("/api/games/blackjack/action", """
-                            {"action":"HIT"}
+            mvc.perform(postJson("/api/games/blackjack/action",
+                            """
+                            {"roundId":"11111111-1111-1111-1111-111111111111","action":"HIT"}
                             """, token))
                     .andExpect(status().isNotFound());
         }
@@ -497,9 +535,7 @@ class GameApiTest extends ApiTestSupport {
 
             JsonNode finished = dealt.get("settled").asBoolean()
                     ? dealt
-                    : perform(postJson("/api/games/blackjack/action", """
-                            {"action":"STAND"}
-                            """, token));
+                    : perform(postJson("/api/games/blackjack/action", stand(dealt), token));
 
             assertThat(finished.get("settled").asBoolean()).isTrue();
 
@@ -521,9 +557,7 @@ class GameApiTest extends ApiTestSupport {
                     """, token));
             int afterFirst = first.get("cardsRemaining").asInt();
             if (!first.get("settled").asBoolean()) {
-                perform(postJson("/api/games/blackjack/action", """
-                        {"action":"STAND"}
-                        """, token));
+                perform(postJson("/api/games/blackjack/action", stand(first), token));
             }
 
             JsonNode second = perform(postJson("/api/games/blackjack/deal", """

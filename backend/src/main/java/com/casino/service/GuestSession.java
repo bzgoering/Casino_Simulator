@@ -34,9 +34,33 @@ public final class GuestSession {
         return balance;
     }
 
-    void setBalance(BigDecimal balance) {
-        this.balance = Money.scaled(balance);
+    /**
+     * Takes a stake, or reports that the balance will not cover it.
+     *
+     * <p>Synchronised, and deliberately one operation rather than a read followed by a write.
+     * {@code volatile} on the field gives visibility but not atomicity: two concurrent bets that
+     * each read the balance, each find it sufficient and each write their own result would let a
+     * guest stake the same money twice. A guest has no database row behind them, so there is no
+     * row lock and no {@code CHECK (balance >= 0)} to catch that afterwards -- this method is the
+     * only thing standing in the way, and so it has to be the whole check-and-subtract.
+     *
+     * @return {@code true} if the stake was taken, {@code false} if the balance is short
+     */
+    synchronized boolean tryDebit(BigDecimal stake) {
+        BigDecimal amount = Money.scaled(stake);
+        if (balance.compareTo(amount) < 0) {
+            return false;
+        }
+        this.balance = Money.scaled(balance.subtract(amount));
         touch();
+        return true;
+    }
+
+    /** Adds to the balance atomically, for the same reason {@link #tryDebit} is atomic. */
+    synchronized BigDecimal creditBy(BigDecimal amount) {
+        this.balance = Money.scaled(balance.add(Money.scaled(amount)));
+        touch();
+        return balance;
     }
 
     void touch() {

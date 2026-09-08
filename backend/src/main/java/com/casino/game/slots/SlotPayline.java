@@ -1,5 +1,7 @@
 package com.casino.game.slots;
 
+import com.casino.game.common.GameRuleException;
+
 import java.util.List;
 
 /**
@@ -50,7 +52,7 @@ public enum SlotPayline {
      */
     public static List<SlotPayline> litBy(int credits) {
         if (credits < 1 || credits > values().length) {
-            throw new IllegalArgumentException(
+            throw new GameRuleException(
                     "credits must be between 1 and " + values().length);
         }
         return List.of(values()).subList(0, credits);

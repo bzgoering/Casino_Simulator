@@ -1,6 +1,8 @@
 package com.casino.game.blackjack;
 
 import com.casino.game.common.Card;
+import com.casino.game.common.GameRuleException;
+import com.casino.game.common.GameStateException;
 import com.casino.game.common.Money;
 import com.casino.game.common.Rank;
 import com.casino.game.common.CardSource;
@@ -100,16 +102,47 @@ public final class BlackjackRound {
         advance();
     }
 
-    /** Applies a player decision to the currently active hand. */
-    public void apply(PlayerAction action, BigDecimal availableBalance) {
+    /**
+     * Validates an action and reports the extra money it will commit, without changing anything.
+     *
+     * <p>This exists so the caller can take the stake <em>before</em> {@link #apply} mutates the
+     * round. A round lives in memory while the money lives in a database transaction: if the
+     * debit fails after the hand has already been dealt its card and had its bet doubled, the
+     * rollback restores the balance but cannot restore this object, and the player is paid at a
+     * stake they were never charged. Asking first and paying first keeps the two in step.
+     *
+     * @return the additional stake DOUBLE or SPLIT will commit; zero for HIT and STAND
+     * @throws GameStateException if the round is already settled
+     * @throws GameRuleException  if the action is not legal on the active hand
+     */
+    public BigDecimal stakeRequiredFor(PlayerAction action, BigDecimal availableBalance) {
+        requireLegal(action, availableBalance);
+        return action == PlayerAction.DOUBLE || action == PlayerAction.SPLIT
+                ? activeHand().bet()
+                : Money.ZERO;
+    }
+
+    private void requireLegal(PlayerAction action, BigDecimal availableBalance) {
         if (phase == RoundPhase.SETTLED) {
-            throw new IllegalStateException("Round is already settled");
+            throw new GameStateException("Round is already settled");
         }
         BlackjackHand hand = activeHand();
         List<PlayerAction> legal = hand.legalActions(rules, availableBalance, hands.size(), maxHands());
         if (!legal.contains(action)) {
-            throw new IllegalArgumentException("Illegal action " + action + "; legal actions are " + legal);
+            throw new GameRuleException("Illegal action " + action + "; legal actions are " + legal);
         }
+    }
+
+    /**
+     * Applies a player decision to the currently active hand.
+     *
+     * <p>{@code availableBalance} must be the balance as it stood <em>before</em> any stake for
+     * this action was taken, so that the legality check here agrees with the one
+     * {@link #stakeRequiredFor} already made.
+     */
+    public void apply(PlayerAction action, BigDecimal availableBalance) {
+        requireLegal(action, availableBalance);
+        BlackjackHand hand = activeHand();
 
         switch (action) {
             case HIT -> {
@@ -233,7 +266,7 @@ public final class BlackjackRound {
 
     public BlackjackHand activeHand() {
         if (activeHandIndex >= hands.size()) {
-            throw new IllegalStateException("No active hand");
+            throw new GameStateException("No active hand");
         }
         return hands.get(activeHandIndex);
     }

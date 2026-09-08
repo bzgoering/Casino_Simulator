@@ -152,12 +152,54 @@ class AuthApiTest extends ApiTestSupport {
                     .andExpect(status().isUnauthorized());
         }
 
-        // The sixth attempt is refused even though the password is now correct.
+        // The sixth attempt is refused even though the password is now correct: the lock, not
+        // the password, is what decides it.
         mvc.perform(postJson("/api/auth/login",
                         """
                         {"username":"henry_k","password":"correct-horse-9"}
                         """))
-                .andExpect(status().isTooManyRequests());
+                .andExpect(status().isUnauthorized());
+
+        String locked = perform(postJson("/api/auth/login",
+                """
+                {"username":"henry_k","password":"correct-horse-9"}
+                """)).toString();
+
+        // 401 with the same wording as any other failed sign-in, deliberately. Answering a
+        // locked account differently -- a 429, or a "temporarily locked" message -- would turn
+        // five wrong guesses into a way of confirming that a username exists.
+        assertThat(locked).contains("Invalid username or password.");
+        assertThat(locked).doesNotContain("locked").doesNotContain("Too many");
+    }
+
+    @Test
+    @DisplayName("a locked account is indistinguishable from one that does not exist")
+    void lockedAccountLooksLikeAnUnknownOne() throws Exception {
+        signUp("olive_r", "correct-horse-9");
+        for (int attempt = 0; attempt < 5; attempt++) {
+            mvc.perform(postJson("/api/auth/login",
+                            """
+                            {"username":"olive_r","password":"wrong-password-1"}
+                            """))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        com.fasterxml.jackson.databind.JsonNode lockedExisting = perform(postJson("/api/auth/login",
+                """
+                {"username":"olive_r","password":"correct-horse-9"}
+                """));
+
+        com.fasterxml.jackson.databind.JsonNode neverExisted = perform(postJson("/api/auth/login",
+                """
+                {"username":"no_such_person","password":"correct-horse-9"}
+                """));
+
+        // Everything the client can distinguish must match. The timestamp is excluded because it
+        // is generated per response and says nothing about the account.
+        assertThat(lockedExisting.get("status")).isEqualTo(neverExisted.get("status"));
+        assertThat(lockedExisting.get("error")).isEqualTo(neverExisted.get("error"));
+        assertThat(lockedExisting.get("message")).isEqualTo(neverExisted.get("message"));
+        assertThat(lockedExisting.has("fieldErrors")).isEqualTo(neverExisted.has("fieldErrors"));
     }
 
     @Test

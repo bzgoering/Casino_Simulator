@@ -88,10 +88,14 @@ public class BlackjackService {
                     boxes == 1 ? "Blackjack bet" : "Blackjack bet on " + boxes + " hands");
 
             BlackjackRound round = new BlackjackRound(rules, table.shoe(), stake, boxes);
+
+            // Settle before the round is published onto the table. If the payout fails, the
+            // transaction takes the stake back and the seat is left holding its previous round
+            // rather than one the player was refunded for.
+            BigDecimal balance = settleIfFinished(principal, round, roundId);
+
             table.setRound(round);
             table.setRoundId(roundId);
-
-            BigDecimal balance = settleIfFinished(principal, round, roundId);
             return view(table, balance);
         });
     }
@@ -120,22 +124,28 @@ public class BlackjackService {
                 throw CasinoException.conflict("Hand already finished.");
             }
             // Binding the action to a round id stops a stale retry from acting on the next hand.
-            if (roundId != null && !roundId.equals(table.roundId())) {
+            // The id is required, so omitting it is a rejection rather than a way past this.
+            if (!table.roundId().equals(roundId)) {
                 throw CasinoException.conflict("That hand ended.");
             }
 
             String activeRoundId = table.roundId();
             BigDecimal balance = wallet.balanceOf(principal);
-            BigDecimal stakedBefore = round.totalStaked();
 
-            round.apply(action, balance);
-
-            // DOUBLE and SPLIT commit more money; take exactly the difference the engine added.
-            BigDecimal additionalStake = Money.scaled(round.totalStaked().subtract(stakedBefore));
+            // Money first, then the mutation. DOUBLE and SPLIT commit another bet, and the round
+            // is a plain object in memory: if the debit were taken afterwards and failed, the
+            // transaction would roll the balance back while the doubled bet and its extra card
+            // stayed on the hand, and settlement would pay a stake that was never charged.
+            BigDecimal additionalStake = round.stakeRequiredFor(action, balance);
             if (Money.isPositive(additionalStake)) {
-                balance = wallet.debit(principal, additionalStake, GameType.BLACKJACK, activeRoundId,
+                wallet.debit(principal, additionalStake, GameType.BLACKJACK, activeRoundId,
                         action + " on blackjack hand");
             }
+
+            // Deliberately the pre-debit balance: it is what stakeRequiredFor just validated
+            // against, and re-checking against the reduced balance would reject the very action
+            // the player has now paid for.
+            round.apply(action, balance);
 
             settleIfFinished(principal, round, activeRoundId);
             return view(table, wallet.balanceOf(principal));

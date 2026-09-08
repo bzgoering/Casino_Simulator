@@ -56,11 +56,17 @@ powershell -c "[Convert]::ToBase64String((1..48|%{Get-Random -Max 256}))"
 To stop it, `docker compose down`. Add `-v` to that only if you also want to wipe the database and
 start over with no accounts.
 
-The API is published separately on <http://localhost:8080> if you want to poke at it directly:
+The API is reachable through the same origin as the app, so you can poke at it directly:
 
 ```bash
-curl localhost:8080/api/config
+curl localhost:8081/api/config
 ```
+
+The backend's own port is deliberately not published to the host. It trusts the proxy's
+`X-Forwarded-For` header to identify the real client, so anything that could reach it directly
+would be able to forge that header and slip past the sign-in rate limiter. nginx is the only way
+in. If you need the container port for debugging, uncomment the `ports:` block on the `backend`
+service in `docker-compose.yml`.
 
 ### Making an account an admin
 

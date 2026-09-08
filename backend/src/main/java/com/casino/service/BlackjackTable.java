@@ -19,8 +19,11 @@ final class BlackjackTable {
 
     private final Shoe shoe;
     private final ReentrantLock lock = new ReentrantLock();
-    private BlackjackRound round;
-    private String roundId;
+    // Volatile because the mutating paths hold the seat lock but the read-only "what is on the
+    // table right now" path does not. Without it a reader could see a stale round, or a round
+    // reference published before the object it points at was fully constructed.
+    private volatile BlackjackRound round;
+    private volatile String roundId;
     private volatile Instant lastAccessAt = Instant.now();
 
     BlackjackTable(Shoe shoe) {

@@ -47,10 +47,13 @@ services:
       CASINO_SECURITY_ALLOWED_ORIGINS: ${CASINO_SECURITY_ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
     expose:
       - "8080"
-    # Published so you can curl the API directly during development. Remove for a deployment
-    # where only nginx should be reachable.
-    ports:
-      - "8080:8080"
+    # Deliberately not published to the host. The backend trusts X-Forwarded-For from the proxy
+    # (server.forward-headers-strategy), so anything that can reach it directly could forge that
+    # header and walk straight past the auth rate limiter. nginx is the only way in.
+    # To debug the API directly, reach it through the proxy on 8081/api, or temporarily add:
+    #   ports:
+    #     - "8080:8080"
+    # and drop forward-headers-strategy back to NONE while you do.
     restart: unless-stopped
     networks: [casino-net]
 

@@ -5,6 +5,8 @@ import com.casino.security.JwtAuthenticationFilter;
 import com.casino.web.error.ApiError;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import static org.springframework.security.config.Customizer.withDefaults;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -51,8 +53,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers
                         .frameOptions(frame -> frame.deny())
-                        .contentTypeOptions(contentType -> {
-                        })
+                        // nosniff, on Spring Security's defaults. Spelled out rather than left
+                        // as an empty lambda, which reads like a block someone meant to fill in.
+                        .contentTypeOptions(withDefaults())
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
                                 .maxAgeInSeconds(31_536_000))

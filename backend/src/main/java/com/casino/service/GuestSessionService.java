@@ -82,8 +82,18 @@ public class GuestSessionService {
         sessions.remove(id);
     }
 
-    void updateBalance(GuestSession session, BigDecimal newBalance) {
-        session.setBalance(newBalance);
+    /**
+     * Takes a stake from a guest, atomically.
+     *
+     * @return {@code true} if it was taken, {@code false} if the balance is short
+     */
+    boolean tryDebit(GuestSession session, BigDecimal stake) {
+        return session.tryDebit(stake);
+    }
+
+    /** Adds to a guest balance atomically and returns the result. */
+    BigDecimal credit(GuestSession session, BigDecimal amount) {
+        return session.creditBy(amount);
     }
 
     /** 128 bits of entropy, URL-safe: guest ids are bearer references and must not be guessable. */

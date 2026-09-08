@@ -9,7 +9,6 @@ import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 import javax.crypto.SecretKey;
@@ -63,10 +62,11 @@ public class JwtService {
         // nothing predictable is ever committed to the repository.
         byte[] generated = new byte[32];
         new SecureRandom().nextBytes(generated);
+        // Nothing derived from the key is logged, not even a prefix. It is only a dev key today,
+        // but "never log key material" is not a rule worth having exceptions to: the next person
+        // to copy this block may not be logging something ephemeral.
         log.warn("No casino.jwt.secret configured; generated an ephemeral dev key. "
                 + "Tokens will be invalidated on restart. Set CASINO_JWT_SECRET for anything real.");
-        log.debug("Ephemeral dev key fingerprint: {}",
-                Base64.getEncoder().encodeToString(generated).substring(0, 8));
         return Keys.hmacShaKeyFor(generated);
     }
 

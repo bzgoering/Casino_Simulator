@@ -39,10 +39,6 @@ public class AuthService {
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]{3,32}$");
 
-    /** A dummy hash to verify against when the username is unknown, to equalise timing. */
-    private static final String DUMMY_HASH =
-            "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-
     private final UserAccountRepository users;
     private final LedgerEntryRepository ledger;
     private final PasswordEncoder passwordEncoder;
@@ -50,6 +46,16 @@ public class AuthService {
     private final GuestSessionService guests;
     private final PasswordPolicy passwordPolicy;
     private final CasinoProperties properties;
+
+    /**
+     * A throwaway hash to verify against when there is no account to verify against, so that the
+     * work done -- and therefore the time taken -- does not disclose whether a username exists.
+     *
+     * <p>Generated with the configured encoder rather than written out as a literal. A hardcoded
+     * hash carries its own cost factor, and one that drifts below the encoder's leaves exactly
+     * the timing signal this is here to remove.
+     */
+    private final String dummyHash;
 
     public AuthService(UserAccountRepository users, LedgerEntryRepository ledger,
                        PasswordEncoder passwordEncoder, JwtService jwtService,
@@ -62,6 +68,7 @@ public class AuthService {
         this.guests = guests;
         this.passwordPolicy = passwordPolicy;
         this.properties = properties;
+        this.dummyHash = passwordEncoder.encode("timing-equalisation-placeholder");
     }
 
     /** Registers a new player, grants the opening balance, and signs them in. */
@@ -92,21 +99,27 @@ public class AuthService {
         String username = rawUsername == null ? "" : rawUsername.trim();
         var maybeAccount = users.findByUsernameIgnoreCase(username);
 
+        String candidate = rawPassword == null ? "" : rawPassword;
+
         if (maybeAccount.isEmpty()) {
             // Spend the same work as a real verification so timing does not disclose existence.
-            passwordEncoder.matches(rawPassword == null ? "" : rawPassword, DUMMY_HASH);
+            passwordEncoder.matches(candidate, dummyHash);
             throw invalidCredentials();
         }
 
         UserAccount account = maybeAccount.get();
-        if (account.isLocked()) {
-            throw new CasinoException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Too many failed attempts. Try again in a few minutes.");
+
+        // A locked or disabled account answers exactly as an unknown one does. Distinguishing
+        // them would hand back a membership oracle: five wrong guesses turning into a different
+        // status code is all an attacker needs to confirm a username exists, which would undo
+        // the timing equalisation above.
+        if (account.isLocked() || !account.isEnabled()) {
+            passwordEncoder.matches(candidate, dummyHash);
+            log.debug("Sign-in refused for uid={}: locked={}, enabled={}",
+                    account.getUid(), account.isLocked(), account.isEnabled());
+            throw invalidCredentials();
         }
-        if (!account.isEnabled()) {
-            throw CasinoException.forbidden("This account has been disabled.");
-        }
-        if (!passwordEncoder.matches(rawPassword == null ? "" : rawPassword, account.getPasswordHash())) {
+        if (!passwordEncoder.matches(candidate, account.getPasswordHash())) {
             account.recordFailedLogin(
                     properties.security().maxFailedLogins(), properties.security().lockDuration());
             users.save(account);

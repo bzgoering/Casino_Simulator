@@ -5,6 +5,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -73,6 +74,9 @@ public final class GameRequests {
      * @param action  HIT, STAND, DOUBLE or SPLIT
      */
     public record BlackjackActionRequest(
+            // Required, not optional. The server rejects an action whose round id does not match
+            // the hand in progress; leaving this blank would have skipped that check entirely.
+            @NotBlank(message = "A round id is required.")
             @Size(max = 36, message = "Invalid round id.")
             String roundId,
 

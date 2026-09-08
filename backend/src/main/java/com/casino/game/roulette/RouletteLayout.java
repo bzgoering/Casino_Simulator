@@ -1,5 +1,7 @@
 package com.casino.game.roulette;
 
+import com.casino.game.common.GameRuleException;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
@@ -138,7 +140,7 @@ public final class RouletteLayout {
     /** Column 1, 2 or 3 as printed on the cloth (the "2 to 1" boxes). */
     public static Set<Integer> column(int columnNumber) {
         if (columnNumber < 1 || columnNumber > COLUMNS) {
-            throw new IllegalArgumentException("Column must be 1..3");
+            throw new GameRuleException("Column must be 1..3");
         }
         var numbers = new HashSet<Integer>();
         for (int n = columnNumber; n <= 36; n += COLUMNS) {
@@ -150,7 +152,7 @@ public final class RouletteLayout {
     /** Dozen 1 (1-12), 2 (13-24) or 3 (25-36). */
     public static Set<Integer> dozen(int dozenNumber) {
         if (dozenNumber < 1 || dozenNumber > 3) {
-            throw new IllegalArgumentException("Dozen must be 1..3");
+            throw new GameRuleException("Dozen must be 1..3");
         }
         var numbers = new HashSet<Integer>();
         int start = (dozenNumber - 1) * 12 + 1;

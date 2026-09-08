@@ -1,5 +1,7 @@
 package com.casino.web.error;
 
+import com.casino.game.common.GameRuleException;
+import com.casino.game.common.GameStateException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +24,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * more. Expected failures carry their own message; anything unexpected is logged in full server
  * side and answered with a generic message, so a stack trace, SQL fragment or class name never
  * reaches an attacker.
+ *
+ * <p>Only the two game exceptions are trusted to carry prose to the client. A bare
+ * {@link IllegalStateException} is deliberately <em>not</em> handled here: it falls through to
+ * the catch-all and is reported as a 500, because an unexpected internal state is a server fault
+ * and answering it with a tidy 409 would hide real bugs from anything watching the error rate.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -45,20 +52,40 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Game engines signal an illegal move by throwing {@link IllegalArgumentException}. Those
-     * messages describe the rules ("Illegal action SPLIT; legal actions are [HIT, STAND]") and
-     * are useful to the player, so they are passed through.
+     * An illegal move or an unplaceable bet. These messages describe the rules ("Illegal action
+     * SPLIT; legal actions are [HIT, STAND]") and are written for the player, so they are passed
+     * through as-is.
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
+    @ExceptionHandler(GameRuleException.class)
+    public ResponseEntity<ApiError> handleGameRule(GameRuleException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), "INVALID_REQUEST", ex.getMessage()));
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex) {
+    /** A legal action at the wrong moment: the round moved on. Also safe to relay. */
+    @ExceptionHandler(GameStateException.class)
+    public ResponseEntity<ApiError> handleGameState(GameStateException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiError.of(HttpStatus.CONFLICT.value(), "INVALID_STATE", ex.getMessage()));
+    }
+
+    /**
+     * Any other {@link IllegalArgumentException}, which did not come from the game rules.
+     *
+     * <p>Still a 400 -- these are almost always a malformed argument off the request -- but the
+     * message is <em>not</em> relayed. {@code IllegalArgumentException} is thrown throughout the
+     * JDK, Spring, Hibernate and Jackson, and those messages can quote class names, entity names
+     * and fragments of internal state. Only {@link GameRuleException} is trusted to be
+     * player-facing prose.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex,
+                                                          HttpServletRequest request) {
+        log.warn("Rejected request on {} {}: {}",
+                request.getMethod(), request.getRequestURI(), ex.toString());
+        return ResponseEntity.badRequest()
+                .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), "INVALID_REQUEST",
+                        "That request could not be accepted. Check the fields and try again."));
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.casino.game.roulette;
 
+import com.casino.game.common.GameRuleException;
+
 import com.casino.game.common.Money;
 import java.math.BigDecimal;
 import java.util.HashSet;
@@ -37,7 +39,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
      */
     public static RouletteBet of(RouletteBetType type, String selection, BigDecimal amount) {
         if (!Money.isPositive(amount)) {
-            throw new IllegalArgumentException("Bet amount must be positive");
+            throw new GameRuleException("Bet amount must be positive");
         }
         String normalised = selection == null ? "" : selection.trim().toUpperCase(Locale.ROOT);
         Set<Integer> pockets = type.isInsideBet()
@@ -45,7 +47,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
                 : outsidePockets(type, normalised);
 
         if (pockets.size() != type.selectionSize()) {
-            throw new IllegalArgumentException(
+            throw new GameRuleException(
                     type + " must cover exactly " + type.selectionSize() + " pockets");
         }
         return new RouletteBet(type, normalised, pockets, amount);
@@ -63,7 +65,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
             default -> false;
         };
         if (!valid) {
-            throw new IllegalArgumentException(
+            throw new GameRuleException(
                     "Numbers " + new java.util.TreeSet<>(numbers) + " are not a valid " + type + " on the layout");
         }
         return numbers;
@@ -71,7 +73,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
 
     private static Set<Integer> parseNumbers(String selection) {
         if (selection.isEmpty()) {
-            throw new IllegalArgumentException("Bet selection is required");
+            throw new GameRuleException("Bet selection is required");
         }
         Set<Integer> numbers = new HashSet<>();
         // -1 keeps trailing empty components, so "17," is rejected rather than silently
@@ -79,17 +81,17 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
         String[] parts = selection.split(",", -1);
         // Cap the input length before parsing so a huge payload cannot be used to burn CPU.
         if (parts.length > RouletteBetType.SIX_LINE.selectionSize()) {
-            throw new IllegalArgumentException("Too many numbers in selection");
+            throw new GameRuleException("Too many numbers in selection");
         }
         for (String part : parts) {
             if (part.isBlank()) {
-                throw new IllegalArgumentException("Selection has an empty entry");
+                throw new GameRuleException("Selection has an empty entry");
             }
             // The wheel owns what a pocket may be called, so that "00" means the double zero
             // and "37" -- how it happens to be held internally -- names nothing at all.
             int value = RouletteWheel.parsePocket(part);
             if (!numbers.add(value)) {
-                throw new IllegalArgumentException("Duplicate number in selection: " + value);
+                throw new GameRuleException("Duplicate number in selection: " + value);
             }
         }
         return numbers;
@@ -100,21 +102,21 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
             case COLOR -> switch (selection) {
                 case "RED" -> pocketsWithColor(PocketColor.RED);
                 case "BLACK" -> pocketsWithColor(PocketColor.BLACK);
-                default -> throw new IllegalArgumentException("Colour bet must be RED or BLACK");
+                default -> throw new GameRuleException("Colour bet must be RED or BLACK");
             };
             case PARITY -> switch (selection) {
                 case "ODD" -> numbersMatching(n -> n % 2 == 1);
                 case "EVEN" -> numbersMatching(n -> n % 2 == 0);
-                default -> throw new IllegalArgumentException("Parity bet must be ODD or EVEN");
+                default -> throw new GameRuleException("Parity bet must be ODD or EVEN");
             };
             case HALF -> switch (selection) {
                 case "LOW" -> numbersMatching(n -> n <= 18);
                 case "HIGH" -> numbersMatching(n -> n >= 19);
-                default -> throw new IllegalArgumentException("Half bet must be LOW or HIGH");
+                default -> throw new GameRuleException("Half bet must be LOW or HIGH");
             };
             case DOZEN -> RouletteLayout.dozen(parseIndex(selection, "Dozen"));
             case COLUMN -> RouletteLayout.column(parseIndex(selection, "Column"));
-            default -> throw new IllegalArgumentException("Unsupported outside bet: " + type);
+            default -> throw new GameRuleException("Unsupported outside bet: " + type);
         };
     }
 
@@ -122,7 +124,7 @@ public record RouletteBet(RouletteBetType type, String selection, Set<Integer> p
         try {
             return Integer.parseInt(selection);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(label + " bet must be 1, 2 or 3");
+            throw new GameRuleException(label + " bet must be 1, 2 or 3");
         }
     }
 

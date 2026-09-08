@@ -62,13 +62,13 @@ public class WalletService {
 
         if (principal.isGuest()) {
             GuestSession session = guests.require(principal.subject());
-            BigDecimal balance = session.balance();
-            if (balance.compareTo(stake) < 0) {
+            // One atomic check-and-subtract. Reading the balance and writing it back separately
+            // would let two concurrent bets both pass the affordability check and spend the same
+            // money twice; a guest has no row lock behind them to catch that.
+            if (!guests.tryDebit(session, stake)) {
                 throw insufficientFunds();
             }
-            BigDecimal updated = Money.scaled(balance.subtract(stake));
-            guests.updateBalance(session, updated);
-            return updated;
+            return session.balance();
         }
 
         UserAccount account = lockAccount(principal);
@@ -103,9 +103,7 @@ public class WalletService {
             if (payout.signum() == 0) {
                 return session.balance();
             }
-            BigDecimal updated = Money.scaled(session.balance().add(payout));
-            guests.updateBalance(session, updated);
-            return updated;
+            return guests.credit(session, payout);
         }
 
         UserAccount account = lockAccount(principal);
@@ -123,7 +121,7 @@ public class WalletService {
     @Transactional
     public BigDecimal creditAccount(UserAccount account, BigDecimal amount, LedgerEntryType type,
                                     GameType game, String roundId, String detail) {
-        BigDecimal credit = Money.scaled(amount);
+        BigDecimal credit = requireNonNegative(amount);
         BigDecimal updated = Money.scaled(account.getBalance().add(credit));
         account.setBalance(updated);
         users.save(account);
@@ -133,9 +131,7 @@ public class WalletService {
 
     /** Credits a guest session directly, used by the admin path. */
     public BigDecimal creditGuest(GuestSession session, BigDecimal amount) {
-        BigDecimal updated = Money.scaled(session.balance().add(Money.scaled(amount)));
-        guests.updateBalance(session, updated);
-        return updated;
+        return guests.credit(session, requireNonNegative(amount));
     }
 
     private UserAccount lockAccount(CasinoPrincipal principal) {
@@ -148,6 +144,21 @@ public class WalletService {
         return users.findByUid(principal.subject())
                 .orElseThrow(() -> new CasinoException(HttpStatus.UNAUTHORIZED,
                         "Your session is no longer valid. Please sign in again."));
+    }
+
+    /**
+     * Guards the credit paths that do not go through {@link #credit}.
+     *
+     * <p>The check belongs here rather than only in the admin service that happens to be the sole
+     * caller today: this class is the one place a balance changes, so the invariant that a credit
+     * never subtracts has to hold in the method that does the subtracting.
+     */
+    private static BigDecimal requireNonNegative(BigDecimal amount) {
+        BigDecimal scaled = Money.scaled(amount);
+        if (scaled.signum() < 0) {
+            throw CasinoException.badRequest("Credit cannot be negative.");
+        }
+        return scaled;
     }
 
     private static BigDecimal requirePositive(BigDecimal amount) {

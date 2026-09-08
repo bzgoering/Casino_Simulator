@@ -1,5 +1,7 @@
 package com.casino.game.roulette;
 
+import com.casino.game.common.GameRuleException;
+
 import com.casino.game.common.RandomSource;
 import java.util.List;
 import java.util.Set;
@@ -78,7 +80,7 @@ public final class RouletteWheel {
     public static int wheelIndexOf(int pocket) {
         int index = POCKET_ORDER.indexOf(pocket);
         if (index < 0) {
-            throw new IllegalArgumentException("Not a pocket on this wheel: " + pocket);
+            throw new GameRuleException("Not a pocket on this wheel: " + pocket);
         }
         return index;
     }
@@ -107,16 +109,16 @@ public final class RouletteWheel {
             return DOUBLE_ZERO;
         }
         if (trimmed.length() > 1 && trimmed.startsWith("0")) {
-            throw new IllegalArgumentException("Not a pocket on this wheel: " + trimmed);
+            throw new GameRuleException("Not a pocket on this wheel: " + trimmed);
         }
         int value;
         try {
             value = Integer.parseInt(trimmed);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Selection must be whole numbers: " + trimmed);
+            throw new GameRuleException("Selection must be whole numbers: " + trimmed);
         }
         if (value < 0 || value > HIGHEST_NUMBER) {
-            throw new IllegalArgumentException("Not a pocket on this wheel: " + trimmed);
+            throw new GameRuleException("Not a pocket on this wheel: " + trimmed);
         }
         return value;
     }

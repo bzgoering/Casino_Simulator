@@ -3,10 +3,11 @@
 FROM node:22-alpine AS build
 WORKDIR /build
 
-COPY package.json ./
-# No lockfile is committed, so install rather than ci. Add package-lock.json and switch to
-# `npm ci` when you want byte-for-byte reproducible builds.
-RUN npm install --no-audit --no-fund
+# The lockfile is copied with the manifest so the build is reproducible: `npm ci` installs the
+# exact resolved tree the lockfile pins and fails if the two disagree, where `npm install` is
+# free to pick up newer transitive versions on any given build.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build

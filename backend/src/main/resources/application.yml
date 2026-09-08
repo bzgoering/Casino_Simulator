@@ -30,10 +30,20 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: true
+    # Deliberately false. Baselining a non-empty database stamps it as already migrated and
+    # skips V1, leaving a schema that never ran the migrations and fails validation later in a
+    # much more confusing way. A genuinely pre-existing database should be baselined by hand.
+    baseline-on-migrate: false
 
 server:
   port: ${SERVER_PORT:8080}
+  # nginx terminates the browser connection, so without this every request reaches the
+  # application from the proxy's own address: the auth rate limiter would key every client to
+  # one bucket, and the admin audit trail would record the proxy for every action. NATIVE lets
+  # Tomcat resolve the real client from X-Forwarded-For, trusting only its internal-proxies
+  # ranges (loopback and private space, which the compose network is on). This is safe only
+  # because port 8080 is not published to the host -- see docker-compose.yml.
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:NATIVE}
   error:
     # Never surface stack traces or internal messages through the container's error page.
     include-message: never
@@ -112,3 +122,20 @@ casino:
       - http://localhost:4173
       - http://localhost:8081
       - http://127.0.0.1:5173
+
+---
+# Production. Selected by SPRING_PROFILES_ACTIVE=prod, which the shipped .env sets.
+#
+# The defaults above are already the strict ones, so this block does not relax anything; it
+# exists so that naming the profile is not a no-op, and so there is one obvious place to put a
+# hardening change. Logging is quieter and the dev conveniences are absent.
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    root: WARN
+    com.casino: INFO
+    org.springframework.security: WARN
