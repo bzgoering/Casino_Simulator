@@ -203,6 +203,20 @@ class AdminApiTest extends ApiTestSupport {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("Below 5.00 minimum."));
 
+            // The minimum binds on each space, not on the spin: five spaces at $1 add up to it
+            // but none of them holds it.
+            mvc.perform(postJson("/api/games/roulette/spin", """
+                            {"bets":[
+                              {"type":"STRAIGHT","selection":"1","amount":1.00},
+                              {"type":"STRAIGHT","selection":"2","amount":1.00},
+                              {"type":"STRAIGHT","selection":"3","amount":1.00},
+                              {"type":"COLOR","selection":"RED","amount":1.00},
+                              {"type":"DOZEN","selection":"1","amount":1.00}
+                            ]}
+                            """, token(player)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("Below 5.00 minimum."));
+
             mvc.perform(postJson("/api/games/roulette/spin", """
                             {"bets":[{"type":"COLOR","selection":"RED","amount":80.00}]}
                             """, token(player)))

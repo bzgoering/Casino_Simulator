@@ -206,7 +206,13 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       return;
     }
     const limits = config() ?? {};
-    const check = validateBet(chipValue, { min: limits.minBet, max: limits.maxBet });
+    const existing = bets.find((b) => b.type === type && b.selection === selection);
+
+    // The limits bind on what a space holds, not on each chip, so any chip goes down as long
+    // as the pile stays within the maximum. The minimum waits for Spin: a pile is built up to
+    // it from smaller chips.
+    const pile = Number(((existing?.amount ?? 0) + chipValue).toFixed(2));
+    const check = validateBet(pile, { max: limits.maxBet });
     if (!check.valid) {
       onError(check.reason);
       return;
@@ -215,8 +221,6 @@ export function createRouletteView({ api, onBalance, onError, config }) {
       onError('Not enough money.');
       return;
     }
-
-    const existing = bets.find((b) => b.type === type && b.selection === selection);
 
     if (existing) {
       existing.amount = Number((existing.amount + chipValue).toFixed(2));
@@ -337,6 +341,17 @@ export function createRouletteView({ api, onBalance, onError, config }) {
 
   async function spin() {
     if (busy || bets.length === 0) return;
+
+    // Every space must hold at least the minimum. Compared in cents: a pile is a sum of floats.
+    const { minBet } = config() ?? {};
+    const short = minBet === undefined
+      ? undefined
+      : bets.find((bet) => Math.round(bet.amount * 100) < Math.round(minBet * 100));
+    if (short) {
+      onError(`${describeBet(short)} has ${formatMoney(short.amount)} on it, `
+        + `below the ${formatMoney(minBet)} minimum.`);
+      return;
+    }
 
     busy = true;
     spinButton.disabled = true;

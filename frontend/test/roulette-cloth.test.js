@@ -40,6 +40,71 @@ const valuesOn = (node) => chipsOn(node).map((chip) => chip.dataset.chip);
 const straight = (n) => document.querySelector(`#roulette-cloth [data-selection="${n}"]`);
 const selectChip = (value) => document.querySelector(`.chip-btn[data-chip="${value}"]`).click();
 
+describe('the table limits, per space', () => {
+  /** A $10 table. The spin never answers, so nothing past the request is exercised. */
+  function mountAtTen({ maxBet = 5000 } = {}) {
+    document.body.innerHTML = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
+    const spinRoulette = vi.fn(() => new Promise(() => {}));
+    const onError = vi.fn();
+    createRouletteView({
+      api: { spinRoulette },
+      onBalance: vi.fn(),
+      onError,
+      config: () => ({ minBet: 10, maxBet, balance: 100000 }),
+    });
+    return { spinRoulette, onError };
+  }
+
+  const pressSpin = () => document.querySelector('#roulette-spin').click();
+
+  it('takes a chip smaller than the minimum', () => {
+    const { onError } = mountAtTen();
+
+    selectChip(1);
+    straight(17).click();
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(valuesOn(straight(17))).toEqual(['1']);
+  });
+
+  it('will not spin while any space holds less than the minimum', () => {
+    const { spinRoulette, onError } = mountAtTen();
+
+    // Ten dollars on the cloth, but spread a dollar a space: no space reaches the minimum.
+    selectChip(1);
+    for (let n = 1; n <= 10; n += 1) straight(n).click();
+    pressSpin();
+
+    expect(spinRoulette).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith('1 has $1.00 on it, below the $10.00 minimum.');
+  });
+
+  it('spins once every space is built up to the minimum from small chips', () => {
+    const { spinRoulette, onError } = mountAtTen();
+
+    selectChip(1);
+    for (let i = 0; i < 10; i += 1) straight(17).click();
+    selectChip(5);
+    for (let i = 0; i < 3; i += 1) straight(18).click();
+    pressSpin();
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(spinRoulette).toHaveBeenCalledTimes(1);
+    expect(spinRoulette.mock.calls[0][0].map((bet) => bet.amount)).toEqual([10, 15]);
+  });
+
+  it('refuses a chip that would take a space past the maximum', () => {
+    const { onError } = mountAtTen({ maxBet: 12 });
+
+    selectChip(10);
+    straight(17).click();
+    straight(17).click();
+
+    expect(onError).toHaveBeenCalledWith('Above $12.00 maximum.');
+    expect(valuesOn(straight(17))).toEqual(['10']);
+  });
+});
+
 describe('the roulette cloth', () => {
   beforeEach(() => mountRoulette());
 

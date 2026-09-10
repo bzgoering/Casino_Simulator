@@ -36,6 +36,8 @@ public class RouletteService {
     @Transactional
     public RouletteRound spin(CasinoPrincipal principal, List<RouletteBet> bets) {
         betValidator.validateRouletteBetCount(bets.size());
+        // Each bet is everything on one space, so the limits bind on what a space holds, not
+        // on the chips that made it up.
         bets.forEach(bet -> betValidator.validate(GameType.ROULETTE, bet.amount()));
 
         BigDecimal total = Money.scaled(bets.stream()
