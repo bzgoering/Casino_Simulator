@@ -503,6 +503,10 @@ const LIMIT_GAMES = [
  *
  * Saving per row rather than all at once keeps a rejected value from silently discarding the
  * other games' edits: the row that failed reports why and the rest are untouched.
+ *
+ * A row's Save stays disabled until one of its two fields differs from what the server last
+ * sent, so pressing it always means a change. The values loaded into the row are kept as its
+ * baseline and handed to the save, which sends nothing when they still match.
  */
 function renderLimitsForm() {
   if (!tableConfig) return;
@@ -513,25 +517,39 @@ function renderLimitsForm() {
     const cfg = tableConfig[GAME_KEYS[game]];
     if (!cfg) continue;
 
+    const baseline = {
+      minBet: Number(cfg.minBet).toFixed(2),
+      maxBet: Number(cfg.maxBet).toFixed(2),
+    };
+
     const min = el('input', {
       attrs: {
         type: 'number', min: '0.01', step: '0.01', required: 'required',
-        value: Number(cfg.minBet).toFixed(2), 'aria-label': `${label} minimum bet`,
+        value: baseline.minBet, 'aria-label': `${label} minimum bet`,
       },
     });
     const max = el('input', {
       attrs: {
         type: 'number', min: '0.01', step: '0.01', required: 'required',
         max: String(tableConfig.maxConfigurableBet),
-        value: Number(cfg.maxBet).toFixed(2), 'aria-label': `${label} maximum bet`,
+        value: baseline.maxBet, 'aria-label': `${label} maximum bet`,
       },
     });
     const save = el('button', {
       className: 'primary',
       text: 'Save',
-      attrs: { type: 'button', 'data-game': game },
+      attrs: { type: 'button', 'data-game': game, disabled: 'disabled' },
     });
-    save.addEventListener('click', () => saveLimits(game, label, min.value, max.value));
+
+    // Compare as numbers: 10, 10.0 and 10.00 are the same limit, and only a different one
+    // should arm the button.
+    const edited = () => !sameAmount(min.value, baseline.minBet)
+      || !sameAmount(max.value, baseline.maxBet);
+    const refresh = () => { save.disabled = !edited(); };
+    min.addEventListener('input', refresh);
+    max.addEventListener('input', refresh);
+
+    save.addEventListener('click', () => saveLimits(game, label, min.value, max.value, baseline));
 
     body.append(el('tr', {
       children: [
@@ -548,20 +566,42 @@ function renderLimitsForm() {
     + 'which is fixed in configuration.');
 }
 
-async function saveLimits(game, label, minValue, maxValue) {
+/** True when two entered amounts are the same money, whatever they look like as text. */
+function sameAmount(a, b) {
+  const left = Number.parseFloat(a);
+  const right = Number.parseFloat(b);
+  if (Number.isNaN(left) || Number.isNaN(right)) return false;
+  return Math.round(left * 100) === Math.round(right * 100);
+}
+
+/**
+ * Saves one game's row, sending only a range that actually moved.
+ *
+ * The server is idempotent too — it stores and audits nothing for an unchanged pair — but the
+ * request is worth not making at all: a save that writes nothing should not cost a round trip
+ * or reload the config the rest of the UI is validating against.
+ */
+async function saveLimits(game, label, minValue, maxValue, baseline) {
   setText(qs('#limits-error'), '');
   setText(qs('#limits-success'), '');
+
+  if (sameAmount(minValue, baseline.minBet) && sameAmount(maxValue, baseline.maxBet)) {
+    setText(qs('#limits-success'), `${label} limits are unchanged; nothing was saved.`);
+    return;
+  }
 
   try {
     const result = await api.setLimits(game, Number.parseFloat(minValue), Number.parseFloat(maxValue));
     const saved = result.games[game];
-    setText(qs('#limits-success'),
-      `${label} limits are now ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}.`);
+    setText(qs('#limits-success'), result.changed
+      ? `${label} limits are now ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}.`
+      : `${label} limits were already ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}; `
+        + 'nothing was saved.');
 
     // Every bet form validates against these, so refresh what the rest of the UI believes.
     await loadConfig();
     renderLimitsForm();
-    await loadAudit();
+    if (result.changed) await loadAudit();
   } catch (error) {
     setText(qs('#limits-error'), `${label}: ${error.message}`);
   }

@@ -289,30 +289,47 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .payline-key li.lit { color: var(--gold); border-color: var(--gold); font-weight: 600; }
 .payline-key li.dark { color: var(--muted); opacity: .55; }
 
-/* Reels are columns, so a reel spins as a unit. */
-.window { display: flex; gap: .6rem; justify-content: center; }
-.reel { display: flex; flex-direction: column; gap: .4rem; }
-
-.stop {
-  width: 92px; height: 84px; background: #fdfdfd; border-radius: var(--radius);
-  display: grid; place-items: center; font-size: 2.1rem;
-  box-shadow: inset 0 0 14px rgb(0 0 0 / 25%); overflow: hidden;
+/* Reels are columns, so a reel spins as a unit. Each is one continuous strip seen through the
+   glass: slot-reels.js moves the cells by transform in steps of --pitch, one symbol high. */
+.window {
+  --cell-w: 92px; --pitch: 84px;
+  display: flex; gap: .5rem; justify-content: center; padding: .6rem;
+  background: linear-gradient(#07090d, #1c222d 50%, #07090d); border-radius: 14px;
+  box-shadow: inset 0 3px 12px rgb(0 0 0 / 70%), 0 0 0 2px #5c4410, 0 0 0 4px var(--gold);
 }
-.stop.spinning span { animation: reel-spin .45s linear infinite; }
+.reel {
+  position: relative; width: var(--cell-w); height: calc(3 * var(--pitch));
+  overflow: hidden; border-radius: 8px; background: #fdfdfd;
+}
+/* The curve of the drum: symbols darken as they roll over the top and bottom edges. */
+.reel::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(rgb(0 0 0 / 55%), rgb(0 0 0 / 8%) 24%, transparent 40%,
+    transparent 60%, rgb(0 0 0 / 8%) 76%, rgb(0 0 0 / 55%));
+}
+
+.reel-cell {
+  position: absolute; top: 0; left: 0; width: 100%; height: var(--pitch);
+  display: grid; place-items: center; font-size: 2.1rem;
+  border-bottom: 1px solid rgb(0 0 0 / 7%); will-change: transform;
+}
+.reel-cell > span { transition: filter .12s, transform .12s; }
+/* At speed the symbols smear along the direction of travel. */
+.reel.blur .reel-cell > span { filter: blur(1.4px); transform: scaleY(1.45); opacity: .85; }
 
 /* BAR and 7 are words, not pictures: emoji sizing would overflow the cell. */
-.stop .glyph-text {
+.reel-cell .glyph-text {
   font-size: 1.15rem; font-weight: 800; letter-spacing: .02em; color: #16181d;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-.stop .glyph-text.SEVEN { font-size: 2.1rem; color: #c1272d; }
-.stop.win { box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 14px rgb(0 0 0 / 25%); }
+.reel-cell .glyph-text.SEVEN { font-size: 2.1rem; color: #c1272d; }
 
-@keyframes reel-spin {
-  0%   { transform: translateY(-100%); opacity: .2; }
-  50%  { opacity: 1; }
-  100% { transform: translateY(100%); opacity: .2; }
-}
+.stop.win { box-shadow: inset 0 0 0 3px var(--gold); animation: win-glow .7s ease-in-out infinite alternate; }
+@keyframes win-glow { to { background: #fff1c2; } }
+
+/* A reel held back while a big line hangs on it. */
+.reel.tease { box-shadow: 0 0 0 3px var(--gold), 0 0 18px 2px var(--gold); animation: tease-pulse .35s ease-in-out infinite alternate; }
+@keyframes tease-pulse { to { box-shadow: 0 0 0 3px #fff3c4, 0 0 26px 6px var(--gold); } }
 
 .line-wins {
   list-style: none; padding: 0; margin: .6rem auto 0; max-width: 340px;

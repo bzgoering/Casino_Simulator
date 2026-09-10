@@ -1,5 +1,6 @@
 import { el, clear, setText, qs, qsa } from '../lib/dom.js';
 import { formatMoney, formatDelta } from '../lib/money.js';
+import { createReels } from './slot-reels.js';
 
 const SYMBOL_GLYPHS = {
   CHERRY: '\u{1F352}',
@@ -44,13 +45,15 @@ export function createSlotsView({ api, onBalance, onError, config }) {
   const stakeNote = qs('#slots-stake');
   const spinButton = qs('#slots-spin');
 
-  /** @type {Array<Array<HTMLElement>>} reel -> row -> cell */
-  let cells = [];
   let creditOptions = [1];
   let credits = 1;
   let busy = false;
 
-  buildWindow();
+  // Until the config arrives the reels turn over the symbol set; the real strip replaces it.
+  clear(windowNode);
+  const reels = createReels(windowNode, {
+    count: REELS, rows: ROWS, glyph, strip: Object.keys(SYMBOL_GLYPHS),
+  });
   spinButton.addEventListener('click', spin);
   betInput.addEventListener('input', showStake);
 
@@ -60,27 +63,6 @@ export function createSlotsView({ api, onBalance, onError, config }) {
       className: TEXT_SYMBOLS.has(symbol) ? `glyph-text ${symbol}` : 'glyph',
       text: SYMBOL_GLYPHS[symbol] ?? '?',
     });
-  }
-
-  /** The three-by-three glass. Reels are columns, so a reel spins as one. */
-  function buildWindow() {
-    clear(windowNode);
-    cells = [];
-    for (let reel = 0; reel < REELS; reel += 1) {
-      const column = [];
-      const reelNode = el('div', { className: 'reel', attrs: { 'data-reel': String(reel) } });
-      for (let row = 0; row < ROWS; row += 1) {
-        const cell = el('div', {
-          className: 'stop',
-          attrs: { 'data-row': String(row) },
-          children: [glyph('CHERRY')],
-        });
-        column.push(cell);
-        reelNode.append(cell);
-      }
-      cells.push(column);
-      windowNode.append(reelNode);
-    }
   }
 
   /** The fixed credit buttons on the cabinet, and what each one lights. */
@@ -169,16 +151,18 @@ export function createSlotsView({ api, onBalance, onError, config }) {
     setText(outcome, '');
     clear(lineWins);
     clearHighlights();
-    startSpinning();
+    // The reels are already turning while the request is in flight, as they would be the
+    // moment the handle is pulled.
+    reels.start();
 
     try {
       const result = await api.spinSlots(Number(bet.toFixed(2)), credits);
       await settle(result);
       onBalance(result.balance);
     } catch (error) {
+      await reels.halt();
       onError(error.message);
     } finally {
-      stopSpinning();
       busy = false;
       spinButton.disabled = false;
       betInput.disabled = false;
@@ -186,40 +170,34 @@ export function createSlotsView({ api, onBalance, onError, config }) {
     }
   }
 
-  function startSpinning() {
-    for (const column of cells) {
-      for (const cell of column) cell.classList.add('spinning');
-    }
-  }
-
-  function stopSpinning() {
-    for (const column of cells) {
-      for (const cell of column) cell.classList.remove('spinning');
-    }
-  }
-
   function clearHighlights() {
-    for (const column of cells) {
+    for (const column of reels.cells) {
       for (const cell of column) cell.classList.remove('win');
     }
   }
 
+  /**
+   * The last reel spins on when the first two already hold a pair of sevens or bars on a lit
+   * line, as a real cabinet holds out on a big line. Only the top payers: teasing every pair of
+   * plums would slow half of all spins.
+   */
+  function teaseReels(window) {
+    const bar = (symbol) => symbol.startsWith('BAR');
+    const live = paylines().slice(0, credits).some(({ rows }) => {
+      const first = window[0][rows[0]];
+      const second = window[1][rows[1]];
+      return (first === 'SEVEN' && second === 'SEVEN') || (bar(first) && bar(second));
+    });
+    return live ? [REELS - 1] : [];
+  }
+
   /** Stops the reels left to right, then shows what each lit line did. */
   async function settle(result) {
-    for (let reel = 0; reel < REELS; reel += 1) {
-      await delay(280);
-      result.window[reel].forEach((symbol, row) => {
-        const cell = cells[reel][row];
-        cell.classList.remove('spinning');
-        clear(cell);
-        cell.append(glyph(symbol));
-        cell.setAttribute('aria-label', symbol);
-      });
-    }
+    await reels.stopOn(result.window, { stops: result.stops, tease: teaseReels(result.window) });
 
     const winners = result.lines.filter((line) => line.win);
     for (const line of winners) {
-      line.rows.forEach((row, reel) => cells[reel][row].classList.add('win'));
+      line.rows.forEach((row, reel) => reels.cells[reel][row].classList.add('win'));
     }
 
     setText(outcome, result.win
@@ -237,14 +215,12 @@ export function createSlotsView({ api, onBalance, onError, config }) {
     }
   }
 
-  function delay(ms) {
-    return new Promise((resolve) => { setTimeout(resolve, ms); });
-  }
-
   /** Renders the paytable, the credit buttons and the machine's advertised return. */
   function describeMachine(cfg) {
     if (!cfg?.slots) return;
     const slots = cfg.slots;
+
+    reels.setStrip(slots.reelStrip);
 
     creditOptions = slots.creditOptions?.length ? slots.creditOptions : [1];
     if (!creditOptions.includes(credits)) {
