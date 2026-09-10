@@ -498,20 +498,24 @@ const LIMIT_GAMES = [
   ['ROULETTE', 'Roulette'],
 ];
 
+/** The rows on the limits form as last rendered: each game's inputs and the values it loaded. */
+let limitRows = [];
+
 /**
- * One row per game, each saved on its own.
+ * One row per game, all saved by the single Save button under the table.
  *
- * Saving per row rather than all at once keeps a rejected value from silently discarding the
- * other games' edits: the row that failed reports why and the rest are untouched.
+ * Save stays disabled until a field on any row differs from what the server last sent, so
+ * pressing it always means a change. The values loaded into each row are kept as its baseline,
+ * and only rows that moved are sent.
  *
- * A row's Save stays disabled until one of its two fields differs from what the server last
- * sent, so pressing it always means a change. The values loaded into the row are kept as its
- * baseline and handed to the save, which sends nothing when they still match.
+ * `pending` carries unsaved edits across a re-render, so a value the server rejected stays in
+ * its field to be corrected rather than snapping back.
  */
-function renderLimitsForm() {
+function renderLimitsForm(pending = {}) {
   if (!tableConfig) return;
   const body = qs('#limits-body');
   clear(body);
+  limitRows = [];
 
   for (const [game, label] of LIMIT_GAMES) {
     const cfg = tableConfig[GAME_KEYS[game]];
@@ -521,50 +525,54 @@ function renderLimitsForm() {
       minBet: Number(cfg.minBet).toFixed(2),
       maxBet: Number(cfg.maxBet).toFixed(2),
     };
+    const entered = pending[game] ?? baseline;
 
     const min = el('input', {
       attrs: {
         type: 'number', min: '0.01', step: '0.01', required: 'required',
-        value: baseline.minBet, 'aria-label': `${label} minimum bet`,
+        value: entered.minBet, 'aria-label': `${label} minimum bet`,
       },
     });
     const max = el('input', {
       attrs: {
         type: 'number', min: '0.01', step: '0.01', required: 'required',
         max: String(tableConfig.maxConfigurableBet),
-        value: baseline.maxBet, 'aria-label': `${label} maximum bet`,
+        value: entered.maxBet, 'aria-label': `${label} maximum bet`,
       },
     });
-    const save = el('button', {
-      className: 'primary',
-      text: 'Save',
-      attrs: { type: 'button', 'data-game': game, disabled: 'disabled' },
-    });
-
-    // Compare as numbers: 10, 10.0 and 10.00 are the same limit, and only a different one
-    // should arm the button.
-    const edited = () => !sameAmount(min.value, baseline.minBet)
-      || !sameAmount(max.value, baseline.maxBet);
-    const refresh = () => { save.disabled = !edited(); };
-    min.addEventListener('input', refresh);
-    max.addEventListener('input', refresh);
-
-    save.addEventListener('click', () => saveLimits(game, label, min.value, max.value, baseline));
+    min.addEventListener('input', refreshLimitsSave);
+    max.addEventListener('input', refreshLimitsSave);
+    limitRows.push({ game, label, min, max, baseline });
 
     body.append(el('tr', {
       children: [
         el('th', { text: label, attrs: { scope: 'row' } }),
         el('td', { children: [min] }),
         el('td', { children: [max] }),
-        el('td', { children: [save] }),
       ],
     }));
   }
 
+  refreshLimitsSave();
   setText(qs('#limits-ceiling'),
     `No maximum may be raised past ${formatMoney(tableConfig.maxConfigurableBet)}, `
     + 'which is fixed in configuration.');
 }
+
+/**
+ * Whether a row differs from what the server last sent. Compared as numbers: 10, 10.0 and
+ * 10.00 are the same limit, and only a different one should arm the button.
+ */
+function limitRowEdited(row) {
+  return !sameAmount(row.min.value, row.baseline.minBet)
+    || !sameAmount(row.max.value, row.baseline.maxBet);
+}
+
+function refreshLimitsSave() {
+  qs('#limits-save').disabled = !limitRows.some(limitRowEdited);
+}
+
+qs('#limits-save').addEventListener('click', saveLimits);
 
 /** True when two entered amounts are the same money, whatever they look like as text. */
 function sameAmount(a, b) {
@@ -575,36 +583,56 @@ function sameAmount(a, b) {
 }
 
 /**
- * Saves one game's row, sending only a range that actually moved.
+ * Saves every game whose row moved, one request per game.
  *
- * The server is idempotent too — it stores and audits nothing for an unchanged pair — but the
- * request is worth not making at all: a save that writes nothing should not cost a round trip
- * or reload the config the rest of the UI is validating against.
+ * The API takes one game at a time, so each edited row is its own request, and one game's
+ * rejected value does not stop the other from saving: each reports on its own, and a row that
+ * failed keeps what was typed.
+ *
+ * Unchanged rows are never sent. The server is idempotent too — it stores and audits nothing
+ * for an unchanged pair — but the request is worth not making at all: a save that writes
+ * nothing should not cost a round trip or reload the config the rest of the UI is validating
+ * against.
  */
-async function saveLimits(game, label, minValue, maxValue, baseline) {
+async function saveLimits() {
   setText(qs('#limits-error'), '');
   setText(qs('#limits-success'), '');
 
-  if (sameAmount(minValue, baseline.minBet) && sameAmount(maxValue, baseline.maxBet)) {
-    setText(qs('#limits-success'), `${label} limits are unchanged; nothing was saved.`);
+  const edited = limitRows.filter(limitRowEdited);
+  if (!edited.length) {
+    setText(qs('#limits-success'), 'Limits are unchanged; nothing was saved.');
     return;
   }
 
-  try {
-    const result = await api.setLimits(game, Number.parseFloat(minValue), Number.parseFloat(maxValue));
-    const saved = result.games[game];
-    setText(qs('#limits-success'), result.changed
-      ? `${label} limits are now ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}.`
-      : `${label} limits were already ${formatMoney(saved.minBet)} to ${formatMoney(saved.maxBet)}; `
-        + 'nothing was saved.');
+  qs('#limits-save').disabled = true;
+  const saved = [];
+  const failed = [];
+  const pending = {};
+  let changed = false;
 
-    // Every bet form validates against these, so refresh what the rest of the UI believes.
-    await loadConfig();
-    renderLimitsForm();
-    if (result.changed) await loadAudit();
-  } catch (error) {
-    setText(qs('#limits-error'), `${label}: ${error.message}`);
+  for (const row of edited) {
+    try {
+      const result = await api.setLimits(row.game,
+        Number.parseFloat(row.min.value), Number.parseFloat(row.max.value));
+      const limits = result.games[row.game];
+      const range = `${formatMoney(limits.minBet)} to ${formatMoney(limits.maxBet)}`;
+      changed = changed || result.changed;
+      saved.push(result.changed
+        ? `${row.label} limits are now ${range}.`
+        : `${row.label} limits were already ${range}; nothing was saved.`);
+    } catch (error) {
+      failed.push(`${row.label}: ${error.message}`);
+      pending[row.game] = { minBet: row.min.value, maxBet: row.max.value };
+    }
   }
+
+  setText(qs('#limits-success'), saved.join(' '));
+  setText(qs('#limits-error'), failed.join(' '));
+
+  // Every bet form validates against these, so refresh what the rest of the UI believes.
+  if (saved.length) await loadConfig();
+  renderLimitsForm(pending);
+  if (changed) await loadAudit();
 }
 
 async function loadAudit() {

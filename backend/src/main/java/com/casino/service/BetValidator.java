@@ -83,12 +83,18 @@ public class BetValidator {
     /**
      * Replaces one game's limits and persists them.
      *
+     * <p>A submission that matches the range already in force writes nothing: no row is
+     * touched, so {@code updated_by} and {@code updated_at} keep naming the admin who last
+     * actually moved the limits rather than the one who most recently pressed Save. The request
+     * is still validated first, so a bad pair is rejected whether or not it would change
+     * anything.
+     *
      * @param actor the admin username, recorded on the row
      * @throws CasinoException with 400 when the pair is not a usable range
      */
     @Transactional
-    public Limits updateLimits(GameType game, BigDecimal requestedMin, BigDecimal requestedMax,
-                               String actor) {
+    public LimitsUpdate updateLimits(GameType game, BigDecimal requestedMin, BigDecimal requestedMax,
+                                     String actor) {
         GameType target = requireTableGame(game);
         BigDecimal min = requireAmount(requestedMin, "minimum");
         BigDecimal max = requireAmount(requestedMax, "maximum");
@@ -100,7 +106,17 @@ public class BetValidator {
             throw CasinoException.badRequest("Maximum above " + ceiling + ".");
         }
 
+        Limits current = limitsFor(target);
         GameLimits row = store.findById(target).orElse(null);
+        // A row that has never been written still needs one, even when the requested pair
+        // equals the configured fallback: the point of the row is that it survives a change
+        // to application.yml.
+        if (row != null && sameRange(current, min, max)) {
+            log.debug("Admin {} re-submitted the {} limits unchanged at {} - {}",
+                    actor, target, min, max);
+            return new LimitsUpdate(current, false);
+        }
+
         if (row == null) {
             row = new GameLimits(target, min, max, actor);
         } else {
@@ -111,7 +127,12 @@ public class BetValidator {
         Limits updated = new Limits(min, max);
         limits.put(target, updated);
         log.info("Admin {} set {} limits to {} - {}", actor, target, min, max);
-        return updated;
+        return new LimitsUpdate(updated, true);
+    }
+
+    /** Compares by value, not by scale: 10 and 10.00 are the same limit. */
+    private static boolean sameRange(Limits current, BigDecimal min, BigDecimal max) {
+        return current.min().compareTo(min) == 0 && current.max().compareTo(max) == 0;
     }
 
     private static GameType requireTableGame(GameType game) {
@@ -198,5 +219,15 @@ public class BetValidator {
 
     /** One game's accepted wager range. */
     public record Limits(BigDecimal min, BigDecimal max) {
+    }
+
+    /**
+     * The outcome of a limits submission.
+     *
+     * @param limits  the range now in force
+     * @param changed false when the submission matched what was already stored, so nothing was
+     *                written and there is nothing to audit
+     */
+    public record LimitsUpdate(Limits limits, boolean changed) {
     }
 }

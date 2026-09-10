@@ -109,30 +109,52 @@ public class AdminService {
      * much money every subsequent bet on that game may move, so it belongs in the same trail.
      * The ceiling on the maximum stays in configuration and is enforced by {@link BetValidator}.
      *
-     * @return the limits now in force, for every game
+     * <p>A submission that leaves the range where it was is not a change, so it writes no audit
+     * line. The trail is there to say when the limits moved; padding it with no-op saves makes
+     * the entries that matter harder to find.
+     *
+     * @return the limits now in force, for every game, and whether this call moved any
      */
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public LimitsResult updateLimits(CasinoPrincipal actor, GameType game, BigDecimal minBet,
                                      BigDecimal maxBet, String sourceIp) {
-        BetValidator.Limits updated = betValidator.updateLimits(game, minBet, maxBet, actor.username());
+        BetValidator.LimitsUpdate result = betValidator.updateLimits(game, minBet, maxBet,
+                actor.username());
+        BetValidator.Limits updated = result.limits();
+
+        if (!result.changed()) {
+            log.debug("Admin {} saved {} limits unchanged at {} - {}", actor.username(), game,
+                    updated.min(), updated.max());
+            return currentLimits(false);
+        }
 
         audit.save(new AdminAuditEntry(actor.subject(), actor.username(), "SET_GAME_LIMITS",
                 game + " " + updated.min() + "-" + updated.max(), "TABLE", null, sourceIp));
         log.info("Admin {} set {} limits to {} - {}", actor.username(), game,
                 updated.min(), updated.max());
-        return currentLimits();
+        return currentLimits(true);
     }
 
     /** Every game's limits and the ceiling an admin may not exceed. */
     public LimitsResult currentLimits() {
-        Map<String, BetValidator.Limits> byGame = new LinkedHashMap<>();
-        betValidator.all().forEach((game, limits) -> byGame.put(game.name(), limits));
-        return new LimitsResult(byGame, betValidator.maxConfigurableBet());
+        return currentLimits(false);
     }
 
-    /** The limits in force, keyed by game name, for the admin console. */
-    public record LimitsResult(Map<String, BetValidator.Limits> games, BigDecimal maxConfigurableBet) {
+    private LimitsResult currentLimits(boolean changed) {
+        Map<String, BetValidator.Limits> byGame = new LinkedHashMap<>();
+        betValidator.all().forEach((game, limits) -> byGame.put(game.name(), limits));
+        return new LimitsResult(byGame, betValidator.maxConfigurableBet(), changed);
+    }
+
+    /**
+     * The limits in force, keyed by game name, for the admin console.
+     *
+     * @param changed whether the call that produced this actually moved a limit; always false
+     *                for a plain read
+     */
+    public record LimitsResult(Map<String, BetValidator.Limits> games, BigDecimal maxConfigurableBet,
+                               boolean changed) {
     }
 
     private void recordAudit(CasinoPrincipal actor, String targetRef, String targetKind,

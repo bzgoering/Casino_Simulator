@@ -71,6 +71,9 @@ public class AdminController {
      *
      * <p>Only the pair is settable: how high the maximum may go is fixed in configuration, so an
      * admin account cannot open a table to arbitrarily large stakes.
+     *
+     * <p>Idempotent: re-sending the range already in force stores nothing and audits nothing,
+     * and the response comes back with {@code changed} false.
      */
     @PostMapping("/limits")
     public AdminDtos.LimitsResponse setLimits(@Valid @RequestBody AdminDtos.LimitsRequest request,

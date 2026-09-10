@@ -81,17 +81,21 @@ public final class AdminDtos {
     /**
      * The limits now in force for every game.
      *
-     * @param games keyed by game name, so the console can render a row per game without
-     *              hard-coding which games exist
+     * @param games   keyed by game name, so the console can render a row per game without
+     *                hard-coding which games exist
+     * @param changed whether the request that returned this actually moved a limit. A save that
+     *                re-submits the values already in force writes nothing, and the console
+     *                says so rather than claiming a change it did not make.
      */
     public record LimitsResponse(java.util.Map<String, GameLimitsView> games,
-                                 BigDecimal maxConfigurableBet) {
+                                 BigDecimal maxConfigurableBet,
+                                 boolean changed) {
 
         public static LimitsResponse from(AdminService.LimitsResult result) {
             var games = new java.util.LinkedHashMap<String, GameLimitsView>();
             result.games().forEach((game, limits) ->
                     games.put(game, new GameLimitsView(limits.min(), limits.max())));
-            return new LimitsResponse(games, result.maxConfigurableBet());
+            return new LimitsResponse(games, result.maxConfigurableBet(), result.changed());
         }
     }
 

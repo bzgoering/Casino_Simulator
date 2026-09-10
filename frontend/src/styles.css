@@ -584,7 +584,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .limits-table thead th { color: var(--muted); font-weight: 600; font-size: .8rem; }
 .limits-table tbody th { font-weight: 600; white-space: nowrap; }
 .limits-table input { width: 120px; }
-.limits-table .primary { margin-top: 0; padding: .45rem .9rem; }
+.limits-form #limits-save { margin-top: .6rem; padding: .45rem .9rem; }
 
 /* ---------- toast ---------- */
 

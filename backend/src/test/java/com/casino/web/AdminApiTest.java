@@ -229,6 +229,48 @@ class AdminApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("re-saving the same limits changes nothing and adds no audit line")
+    void unchangedLimitsAreNotWritten() throws Exception {
+        JsonNode admin = adminSession("admin_noop_limits", "correct-horse-9");
+
+        try {
+            JsonNode first = perform(postJson("/api/admin/limits", """
+                    {"game":"BLACKJACK","minBet": 3.00, "maxBet": 300.00}
+                    """, token(admin)));
+            assertThat(first.get("changed").asBoolean()).isTrue();
+
+            int auditedAfterChange = perform(getAs("/api/admin/audit?limit=50", token(admin))).size();
+
+            // The same pair again, and once more written differently: both are the same money.
+            JsonNode again = perform(postJson("/api/admin/limits", """
+                    {"game":"BLACKJACK","minBet": 3.00, "maxBet": 300.00}
+                    """, token(admin)));
+            assertThat(again.get("changed").asBoolean()).isFalse();
+            assertThat(again.get("games").get("BLACKJACK").get("minBet").decimalValue())
+                    .isEqualByComparingTo("3.00");
+
+            JsonNode rescaled = perform(postJson("/api/admin/limits", """
+                    {"game":"BLACKJACK","minBet": 3, "maxBet": 300.0}
+                    """, token(admin)));
+            assertThat(rescaled.get("changed").asBoolean()).isFalse();
+
+            assertThat(perform(getAs("/api/admin/audit?limit=50", token(admin))).size())
+                    .isEqualTo(auditedAfterChange);
+
+            // Moving only one of the two bounds is still a change.
+            JsonNode maxOnly = perform(postJson("/api/admin/limits", """
+                    {"game":"BLACKJACK","minBet": 3.00, "maxBet": 400.00}
+                    """, token(admin)));
+            assertThat(maxOnly.get("changed").asBoolean()).isTrue();
+        } finally {
+            // The validator holds the limits outside the transaction, so put them back.
+            perform(postJson("/api/admin/limits", """
+                    {"game":"BLACKJACK","minBet": 1.00, "maxBet": 5000.00}
+                    """, token(admin)));
+        }
+    }
+
+    @Test
     @DisplayName("only the table games appear in the limits, since slots are not a table game")
     void limitsCoverTableGamesOnly() throws Exception {
         JsonNode admin = adminSession("admin_read_limits", "correct-horse-9");
