@@ -1,91 +1,26 @@
 # Casino Simulator
 
-A fun casino web app with three games: **blackjack**, **slots** and **roulette**.
+A full-stack casino web app with **blackjack**, **slots** and **roulette**, and more games to come. Play money only: nothing touches real currency.
 
-You can play either way:
+## Tech
+- **Backend:** Java 21, Spring Boot 3.4, PostgreSQL 16
+- **Frontend:** JavaScript (Vite 5), served by nginx
+- **Runs with:** Docker Compose
 
-- **Signed out**, as a guest: hit *Play as guest* and you get **$10,000** in chips to mess about
-  with straight away. Nothing about a guest is saved: no account, no history, and the chips reset
-  when the session ends.
-- **Signed in**, with an account: sign up and you start with **$100**, your balance and full
-  history are kept between visits, and you can manage the account from the page behind your
-  username.
-
-Signing up asks you to confirm your age first: an account is for **21 and over**, and anyone
-younger is seated as a guest instead of being turned away. The date of birth is checked in the
-browser and discarded on the spot, no personal data will be kept at this time. 
-
-> **Play money only.** Nothing here touches real currency or real payments. There is no cashier:
-> the deposit and withdraw buttons on the account page are deliberately dead, and are there only
-> to show where they would sit in a real product.
-
-Every outcome is decided on the server from a cryptographic random source, and the odds are the
-real published ones: American double-zero roulette at a 5.26% house edge, a 96% return on the
-slots, and blackjack paying 3:2 off an eight-deck shoe. One bet is priced apart from the rest,
-roulette's five-number 0-00-1-2-3, which pays 6:1 and so runs at 7.89%. That is what a real
-table charges for it, and it is the worst bet on the cloth.
-
----
-
-## Running it
-
+## How to run
 You need **Docker Desktop**. From the project root:
-
 ```bash
-cp .env.example .env      # then edit it, see below
+cp .env.example .env      # then set POSTGRES_PASSWORD and CASINO_JWT_SECRET
 docker compose up --build
 ```
+Open **http://localhost:8081**. Stop it with `docker compose down` (add `-v` to also wipe the database).
 
-Then open **<http://localhost:8081>**.
+`CASINO_JWT_SECRET` must be at least 32 characters. You can generate one with `openssl rand -base64 48`.
 
-Before the first run, open `.env` and set two values:
+<details>
+<summary>Running without Docker</summary>
 
-| Variable | What to put |
-|---|---|
-| `POSTGRES_PASSWORD` | any password you like; it is only used between the containers |
-| `CASINO_JWT_SECRET` | a random string of **at least 32 characters** |
-
-Neither has a working default; the backend refuses to start without a JWT secret. To generate one:
-
-```bash
-openssl rand -base64 48
-# or, on Windows PowerShell:
-powershell -c "[Convert]::ToBase64String((1..48|%{Get-Random -Max 256}))"
-```
-
-To stop it, `docker compose down`. Add `-v` to that only if you also want to wipe the database and
-start over with no accounts.
-
-The API is reachable through the same origin as the app, so you can poke at it directly:
-
-```bash
-curl localhost:8081/api/config
-```
-
-The backend's own port is deliberately not published to the host. It trusts the proxy's
-`X-Forwarded-For` header to identify the real client, so anything that could reach it directly
-would be able to forge that header and slip past the sign-in rate limiter. nginx is the only way
-in. If you need the container port for debugging, uncomment the `ports:` block on the `backend`
-service in `docker-compose.yml`.
-
-### Making an account an admin
-
-Admins can adjust the table limits and credit balances. There is deliberately no button that
-grants admin, so promote an existing account from the database:
-
-```bash
-docker compose exec db psql -U casino -d casino \
-  -c "UPDATE user_account SET role = 'ADMIN' WHERE username = 'your_username';"
-```
-
-Sign out and back in to pick up the new role.
-
----
-
-## Running without Docker
-
-You will need Java 21+, Node 18+, and PostgreSQL on `localhost:5432` (or just start the database
-on its own with `docker compose up db`).
+You need Java 21+, Node 18+, and PostgreSQL on `localhost:5432` (or run just the database with `docker compose up db`).
 
 ```bash
 # Backend, on http://localhost:8080
@@ -93,17 +28,21 @@ cd backend
 export CASINO_JWT_SECRET="a-long-random-string-of-at-least-32-characters"
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
-# Frontend, on http://localhost:5173 (proxies /api to the backend)
+# Frontend, on http://localhost:5173
 cd frontend
 npm install
 npm run dev
 ```
+</details>
 
----
+**Tests:** `cd backend && ./mvnw test` and `cd frontend && npm test`
 
-## Tests
-
-```bash
-cd backend  && ./mvnw test      # 189 tests
-cd frontend && npm test         # 168 tests
-```
+## Features
+- **Guest mode:** play right away with $10,000 in chips. Nothing is saved.
+- **Accounts (21+):** start with $100, and your balance and history are kept between visits.
+- **Real odds, decided on the server:** American double-zero roulette, slots with a 96% return, and blackjack paying 3:2 from an eight-deck shoe.
+- **Admin role:** adjust table limits and credit balances. To make an account an admin:
+  ```bash
+  docker compose exec db psql -U casino -d casino \
+    -c "UPDATE user_account SET role = 'ADMIN' WHERE username = 'your_username';"
+  ```
